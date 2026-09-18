@@ -35,6 +35,7 @@ export default async function Inicio(props: PageProps<"/">) {
           name="q"
           defaultValue={q}
           placeholder="Buscar por cliente…"
+          autoComplete="off"
           className="h-9 w-64 rounded border border-input bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-ring/30"
         />
         <div className="flex flex-wrap gap-1">
