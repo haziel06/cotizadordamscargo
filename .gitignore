@@ -1,0 +1,5 @@
+_legacy/
+node_modules/
+.next/
+.env*.local
+.env
