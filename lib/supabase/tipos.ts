@@ -8,7 +8,8 @@ type Enums = {
   moneda: "USD" | "GTQ";
   tipo_margen: "porcentaje" | "monto_fijo" | "precio_fijo";
   tipo_proveedor: "naviera" | "agente_origen" | "transportista" | "courier" | "almacenadora" | "custodio" | "otro";
-  unidad_concepto: "envio" | "contenedor" | "kg" | "cbm" | "libra";
+  unidad_concepto: "envio" | "contenedor" | "kg" | "cbm" | "libra" | "pie_cubico" | "guia" | "factura";
+  tipo_servicio: "maritimo_fcl" | "maritimo_lcl" | "aereo" | "courier" | "terrestre" | "aduanas";
 };
 
 type ClienteRow = {
@@ -21,6 +22,24 @@ type ConceptoRow = {
   moneda: Enums["moneda"]; unidad: Enums["unidad_concepto"]; costo: number; tipo_margen: Enums["tipo_margen"];
   valor_margen: number; aplica_iva: boolean; orden: number; activo: boolean; notas: string | null;
   created_at: string; updated_at: string;
+  seccion: string; tarifario_id: string | null; aplica_recargos: boolean; minimo: number | null;
+  rango_desde: number | null; rango_hasta: number | null; pendiente: boolean; archivado_at: string | null;
+};
+type TarifarioRow = {
+  id: string; nombre: string; proveedor_id: string | null; servicio: Enums["tipo_servicio"] | null; seccion: string;
+  origen: string | null; destino: string | null; moneda: Enums["moneda"]; vigencia_desde: string | null; vigencia_hasta: string | null;
+  documento_url: string | null; notas: string | null; archivado_at: string | null; creado_por: string | null;
+  created_at: string; updated_at: string;
+};
+type TarifaRutaRow = {
+  id: string; tarifario_id: string; pais: string | null; origen: string; destino: string; via: string | null;
+  costo: number | null; unidad: Enums["unidad_concepto"]; minimo: number | null; transito: string | null;
+  tipo_margen: Enums["tipo_margen"]; valor_margen: number; aplica_recargos: boolean; notas: string | null;
+  archivado_at: string | null; created_at: string;
+};
+type TarifaClienteRow = {
+  id: string; cliente_id: string; concepto_id: string; tipo_margen: Enums["tipo_margen"]; valor_margen: number;
+  notas: string | null; created_at: string;
 };
 type ConfigRow = { clave: string; valor: Json; updated_at: string };
 type CorrelativoRow = { anio: number; ultimo: number };
@@ -29,6 +48,7 @@ type LineaRow = {
   categoria: Enums["categoria_concepto"]; moneda: Enums["moneda"]; cantidad: number; costo_unitario: number;
   tipo_margen: Enums["tipo_margen"]; valor_margen: number; lleva_iva: boolean; venta_total: number;
   venta_bruta: number; orden: number;
+  aplica_recargos: boolean; nota: string | null; nota_visible: boolean; proveedor_nombre: string | null; ruta: string | null;
 };
 type CotizacionRow = {
   id: string; numero: string; cliente_id: string | null; cliente_nombre: string; contacto: string | null;
@@ -39,6 +59,7 @@ type CotizacionRow = {
   total_gtq: number; costo_total_gtq: number; utilidad_gtq: number; margen_pct: number;
   notas_internas: string | null; created_at: string; updated_at: string;
   incoterm: string | null; descuentos: Json; notas: Json | null; creado_por: string | null;
+  tipo_servicio: Enums["tipo_servicio"];
 };
 type PerfilRow = {
   user_id: string; nombre: string; cargo: string; correo: string; telefono: string;
@@ -61,13 +82,16 @@ export type Database = {
   public: {
     Tables: {
       clientes: Tabla<ClienteRow, "nombre">;
-      conceptos: Tabla<ConceptoRow, "nombre" | "categoria" | "moneda">;
+      conceptos: Tabla<ConceptoRow, "nombre" | "categoria" | "moneda" | "seccion">;
       config: Tabla<ConfigRow, "clave" | "valor">;
       correlativos: Tabla<CorrelativoRow, "anio">;
       cotizacion_lineas: Tabla<LineaRow, "cotizacion_id" | "nombre" | "categoria" | "moneda" | "tipo_margen">;
       cotizaciones: Tabla<CotizacionRow, "numero" | "cliente_nombre" | "tipo_cambio">;
       proveedores: Tabla<ProveedorRow, "nombre">;
       perfiles: Tabla<PerfilRow, "user_id">;
+      tarifarios: Tabla<TarifarioRow, "nombre" | "seccion">;
+      tarifas_ruta: Tabla<TarifaRutaRow, "tarifario_id" | "origen">;
+      tarifas_cliente: Tabla<TarifaClienteRow, "cliente_id" | "concepto_id" | "tipo_margen" | "valor_margen">;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -89,3 +113,7 @@ export type Cliente = Tables<"clientes">;
 export type Cotizacion = Tables<"cotizaciones">;
 export type CotizacionLinea = Tables<"cotizacion_lineas">;
 export type Perfil = Tables<"perfiles">;
+export type Tarifario = Tables<"tarifarios">;
+export type TarifaRuta = Tables<"tarifas_ruta">;
+export type TarifaCliente = Tables<"tarifas_cliente">;
+export type TipoServicio = Enums["tipo_servicio"];

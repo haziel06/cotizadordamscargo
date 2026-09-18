@@ -1,5 +1,5 @@
 import { crearClienteServidor } from "@/lib/supabase/server";
-import type { TipoMargen } from "@/lib/calculo/tipos";
+import type { Recargos, TipoMargen } from "@/lib/calculo/tipos";
 
 export interface Empresa {
   razon_social: string;
@@ -28,6 +28,8 @@ export interface Config {
   empresa: Empresa;
   textos_legales: TextosLegales;
   defaults: Defaults;
+  /** ISR y "no domiciliada" que se cargan sobre costos de proveedores extranjeros. */
+  recargos: Recargos;
 }
 
 /** Valores de respaldo si la tabla config está vacía (spec §8.2, §8.5, §5.5). */
@@ -61,6 +63,7 @@ export const CONFIG_DEFAULT: Config = {
     cuenta_cliente: ["Permisos especiales, incluyendo gastos fitosanitarios, cuarentena", "Multas por sobrepeso"],
   },
   defaults: { tipo_cambio: 8.05, dias_vigencia: 15, margen_default: { tipo: "porcentaje", valor: 15 } },
+  recargos: { isr_pct: 7, no_domiciliada_pct: 5.263 },
 };
 
 export async function leerConfig(): Promise<Config> {
@@ -71,6 +74,7 @@ export async function leerConfig(): Promise<Config> {
     empresa: { ...CONFIG_DEFAULT.empresa, ...((mapa.empresa as Partial<Empresa>) ?? {}) },
     textos_legales: { ...CONFIG_DEFAULT.textos_legales, ...((mapa.textos_legales as Partial<TextosLegales>) ?? {}) },
     defaults: { ...CONFIG_DEFAULT.defaults, ...((mapa.defaults as Partial<Defaults>) ?? {}) },
+    recargos: { ...CONFIG_DEFAULT.recargos, ...((mapa.recargos as Partial<Recargos>) ?? {}) },
   };
 }
 

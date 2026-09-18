@@ -1,5 +1,5 @@
 import { redondear, ventaLinea } from "./linea";
-import type { Categoria, LineaCalculo, Moneda } from "./tipos";
+import { SIN_RECARGOS, type Categoria, type LineaCalculo, type Moneda, type Recargos } from "./tipos";
 
 /**
  * Descuento para clientes especiales. Puede ir sobre un bloque (en la moneda de ese bloque)
@@ -41,8 +41,8 @@ function repartir(ventas: number[], indices: number[], monto: number) {
   return redondear(real);
 }
 
-export function aplicarDescuentos(lineas: LineaCalculo[], descuentos: Descuento[], tipoCambio: number): ResultadoDescuentos {
-  const ventas = lineas.map(ventaLinea);
+export function aplicarDescuentos(lineas: LineaCalculo[], descuentos: Descuento[], tipoCambio: number, recargos: Recargos = SIN_RECARGOS): ResultadoDescuentos {
+  const ventas = lineas.map((l) => ventaLinea(l, recargos));
   const indicesPor = (c: Categoria) => lineas.map((l, i) => (l.categoria === c ? i : -1)).filter((i) => i >= 0);
   const subtotal = (c: Categoria) => indicesPor(c).reduce((s, i) => s + ventas[i], 0);
   const descuento_por_bloque: Record<Categoria, number> = { internacional: 0, local: 0, naviera: 0 };

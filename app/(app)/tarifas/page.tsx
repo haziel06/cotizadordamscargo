@@ -1,10 +1,13 @@
 import { crearClienteServidor } from "@/lib/supabase/server";
-import { TablaTarifas } from "@/components/tarifas/TablaTarifas";
+import { listarTarifarios } from "@/lib/tarifas/consultas";
+import { ListaTarifarios } from "@/components/tarifas/ListaTarifarios";
 
-export default async function PaginaTarifas() {
+export default async function PaginaTarifas(props: PageProps<"/tarifas">) {
+  const sp = await props.searchParams;
+  const archivados = sp.archivados === "1";
   const supabase = await crearClienteServidor();
-  const [{ data: conceptos }, { data: proveedores }] = await Promise.all([
-    supabase.from("conceptos").select("*").order("categoria").order("orden").order("nombre"),
+  const [tarifarios, { data: proveedores }] = await Promise.all([
+    listarTarifarios(archivados),
     supabase.from("proveedores").select("*").order("nombre"),
   ]);
 
@@ -13,10 +16,10 @@ export default async function PaginaTarifas() {
       <div>
         <h1 className="text-2xl font-semibold text-primary">Base de tarifas</h1>
         <p className="text-sm text-muted-foreground">
-          Costos y márgenes que se cargan al armar una cotización. Editar aquí no cambia cotizaciones ya guardadas.
+          Un tarifario por proveedor y servicio, con su vigencia y el documento original. Editar aquí no cambia cotizaciones ya guardadas.
         </p>
       </div>
-      <TablaTarifas key={JSON.stringify(conceptos?.map((c) => c.updated_at))} conceptos={conceptos ?? []} proveedores={proveedores ?? []} />
+      <ListaTarifarios key={`${archivados}-${tarifarios.length}`} tarifarios={tarifarios} proveedores={proveedores ?? []} mostrandoArchivados={archivados} />
     </div>
   );
 }
