@@ -63,7 +63,10 @@ export type Database = {
       proveedores: Tabla<ProveedorRow, "nombre">;
     };
     Views: { [_ in never]: never };
-    Functions: { siguiente_numero_cotizacion: { Args: Record<string, never>; Returns: string } };
+    Functions: {
+      siguiente_numero_cotizacion: { Args: Record<string, never>; Returns: string };
+      guardar_cotizacion: { Args: { p_id: string | null; p_cabecera: Json; p_lineas: Json }; Returns: string };
+    };
     Enums: Enums;
     CompositeTypes: { [_ in never]: never };
   };

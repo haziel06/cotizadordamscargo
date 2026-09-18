@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Casilla, Entrada, Selector } from "@/components/Campos";
@@ -17,24 +17,26 @@ export function Proveedores({ proveedores }: { proveedores: Proveedor[] }) {
   const [filas, setFilas] = useState<Fila[]>(() => proveedores.map(aFila));
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  const filasRef = useRef(filas);
+  useEffect(() => {
+    filasRef.current = filas;
+  }, [filas]);
 
   const actualizar = (clave: string, cambios: Partial<Fila>) =>
     setFilas((fs) => fs.map((f) => (f._clave === clave ? { ...f, ...cambios } : f)));
 
   const guardar = (clave: string, cambios: Partial<Fila> = {}) => {
-    setFilas((fs) => {
-      const nuevas = fs.map((f) => (f._clave === clave ? { ...f, ...cambios } : f));
-      const fila = nuevas.find((f) => f._clave === clave)!;
-      if (fila.nombre.trim()) {
-        startTransition(async () => {
-          const { _clave, ...datos } = fila;
-          void _clave;
-          const r = await guardarProveedor(datos);
-          if (r.ok) setFilas((xs) => xs.map((f) => (f._clave === clave ? { ...f, id: r.id ?? f.id } : f)));
-          else setError(r.error);
-        });
-      }
-      return nuevas;
+    const actual = filasRef.current.find((f) => f._clave === clave);
+    if (!actual) return;
+    const fila: Fila = { ...actual, ...cambios };
+    actualizar(clave, cambios);
+    if (!fila.nombre.trim()) return;
+    startTransition(async () => {
+      const { _clave, ...datos } = fila;
+      void _clave;
+      const r = await guardarProveedor(datos);
+      if (r.ok) actualizar(clave, { id: r.id ?? fila.id });
+      else setError(r.error);
     });
   };
 

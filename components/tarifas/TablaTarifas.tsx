@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Casilla, Entrada, Selector } from "@/components/Campos";
@@ -51,6 +51,11 @@ export function TablaTarifas({ conceptos, proveedores }: { conceptos: Concepto[]
   const [categoria, setCategoria] = useState<"" | DatosConcepto["categoria"]>("");
   const [verInactivos, setVerInactivos] = useState(false);
   const [, startTransition] = useTransition();
+  // Espejo del estado más reciente, para guardar sin depender de cierres viejos.
+  const filasRef = useRef(filas);
+  useEffect(() => {
+    filasRef.current = filas;
+  }, [filas]);
 
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -67,25 +72,19 @@ export function TablaTarifas({ conceptos, proveedores }: { conceptos: Concepto[]
 
   /** Aplica cambios (si hay) y guarda la fila con el estado más reciente. */
   const cambiarYGuardar = (clave: string, cambios: Partial<Fila> = {}) => {
-    setFilas((fs) => {
-      const nuevas = fs.map((f) => (f._clave === clave ? { ...f, ...cambios, _estado: "guardando" as const } : f));
-      const fila = nuevas.find((f) => f._clave === clave)!;
-      if (!fila.nombre.trim()) return fs.map((f) => (f._clave === clave ? { ...f, ...cambios } : f));
-      startTransition(async () => {
-        const { _clave, _estado, _error, ...datos } = fila;
-        void _clave; void _estado; void _error;
-        const r = await guardarConcepto(datos);
-        setFilas((xs) =>
-          xs.map((f) =>
-            f._clave === clave
-              ? r.ok
-                ? { ...f, id: r.id ?? f.id, _estado: "guardado", _error: undefined }
-                : { ...f, _estado: "error", _error: r.error }
-              : f,
-          ),
-        );
-      });
-      return nuevas;
+    const actual = filasRef.current.find((f) => f._clave === clave);
+    if (!actual) return;
+    const fila: Fila = { ...actual, ...cambios };
+    if (!fila.nombre.trim()) {
+      actualizar(clave, cambios);
+      return;
+    }
+    actualizar(clave, { ...cambios, _estado: "guardando" });
+    startTransition(async () => {
+      const { _clave, _estado, _error, ...datos } = fila;
+      void _clave; void _estado; void _error;
+      const r = await guardarConcepto(datos);
+      actualizar(clave, r.ok ? { id: r.id ?? fila.id, _estado: "guardado", _error: undefined } : { _estado: "error", _error: r.error });
     });
   };
   const guardar = (clave: string) => cambiarYGuardar(clave);
