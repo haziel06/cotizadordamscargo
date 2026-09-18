@@ -46,3 +46,25 @@ export const TIPOS_PROVEEDOR: { valor: TipoProveedor; texto: string }[] = [
 ];
 
 export const TIPOS_CARGA = ["FCL 20GP", "FCL 40GP", "FCL 40HC", "LCL", "Carga aérea", "Terrestre"];
+
+/** Incoterms 2020. El texto corto es lo que ve el usuario en el selector. */
+export const INCOTERMS: { valor: string; texto: string }[] = [
+  { valor: "EXW", texto: "EXW · En fábrica" },
+  { valor: "FCA", texto: "FCA · Franco transportista" },
+  { valor: "FAS", texto: "FAS · Franco al costado del buque" },
+  { valor: "FOB", texto: "FOB · Franco a bordo" },
+  { valor: "CFR", texto: "CFR · Costo y flete" },
+  { valor: "CIF", texto: "CIF · Costo, seguro y flete" },
+  { valor: "CPT", texto: "CPT · Transporte pagado hasta" },
+  { valor: "CIP", texto: "CIP · Transporte y seguro pagados hasta" },
+  { valor: "DAP", texto: "DAP · Entregado en lugar" },
+  { valor: "DPU", texto: "DPU · Entregado en lugar descargado" },
+  { valor: "DDP", texto: "DDP · Entregado derechos pagados" },
+];
+
+export const AMBITOS_DESCUENTO: { valor: "internacional" | "local" | "naviera" | "total"; texto: string }[] = [
+  { valor: "total", texto: "Total general" },
+  { valor: "internacional", texto: "Flete internacional" },
+  { valor: "local", texto: "Gastos locales" },
+  { valor: "naviera", texto: "Gastos de naviera" },
+];

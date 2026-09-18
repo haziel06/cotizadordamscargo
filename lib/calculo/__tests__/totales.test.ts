@@ -45,7 +45,7 @@ describe("totalesCotizacion — bordes", () => {
   it("sin líneas todo 0", () => {
     expect(totalesCotizacion([], 8.05)).toEqual({
       internacional_usd: 0, local_gtq: 0, naviera_usd: 0, total_gtq: 0,
-      costo_total_gtq: 0, venta_total_gtq: 0, utilidad_gtq: 0, margen_pct: 0,
+      costo_total_gtq: 0, venta_total_gtq: 0, utilidad_gtq: 0, margen_pct: 0, descuento_total_gtq: 0,
     });
   });
   it("naviera se suma al total en Q; depósito sin IVA no se divide", () => {
@@ -73,5 +73,24 @@ describe("totalesCotizacion — bordes", () => {
     );
     expect(t.utilidad_gtq).toBe(300);
     expect(t.margen_pct).toBe(0);
+  });
+});
+
+describe("totalesCotizacion — con descuentos", () => {
+  it("10% al total baja los tres bloques y el margen", () => {
+    const sin = totalesCotizacion(grupoAliados, 8.05);
+    const con = totalesCotizacion(grupoAliados, 8.05, [{ ambito: "total", tipo: "porcentaje", valor: 10 }]);
+    expect(con.internacional_usd).toBe(7380);
+    expect(con.local_gtq).toBe(8775);
+    expect(con.total_gtq).toBe(r2(sin.total_gtq * 0.9));
+    expect(con.descuento_total_gtq).toBe(r2(sin.total_gtq * 0.1));
+    expect(con.costo_total_gtq).toBe(sin.costo_total_gtq);
+    expect(con.margen_pct).toBeLessThan(sin.margen_pct);
+  });
+  it("monto fijo en Q a gastos locales", () => {
+    const con = totalesCotizacion(grupoAliados, 8.05, [{ ambito: "local", tipo: "monto", valor: 250 }]);
+    expect(con.local_gtq).toBe(9500);
+    expect(con.internacional_usd).toBe(8200);
+    expect(con.descuento_total_gtq).toBe(250);
   });
 });

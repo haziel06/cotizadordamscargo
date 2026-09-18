@@ -1,8 +1,9 @@
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { NextResponse } from "next/server";
 import { crearClienteServidor } from "@/lib/supabase/server";
-import { leerConfig } from "@/lib/config";
+import { leerConfig, leerPerfil } from "@/lib/config";
 import { obtenerCotizacion } from "@/lib/cotizaciones/consultas";
 import { DocumentoCotizacion, registrarFuentes } from "@/components/pdf/DocumentoCotizacion";
 
@@ -31,14 +32,25 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/cotizaciones/[i
   const { id } = await ctx.params;
   const [datos, config] = await Promise.all([obtenerCotizacion(id), leerConfig()]);
   if (!datos) return new NextResponse("No encontrada", { status: 404 });
+  // Firma: la de quien creó la cotización; si no tiene perfil, la del usuario actual.
+  const perfilCreador = await leerPerfil(datos.cotizacion.creado_por);
+  const perfil = perfilCreador.nombre || perfilCreador.correo ? perfilCreador : await leerPerfil(auth.user.id);
 
   if (!fuentesListas) {
     registrarFuentes(path.join(process.cwd(), "public", "fonts"));
     fuentesListas = true;
   }
 
+  const fondo = await readFile(path.join(process.cwd(), "public", "pdf", "fondo-encabezado.jpg")).catch(() => undefined);
+
   const buffer = await renderToBuffer(
-    <DocumentoCotizacion cotizacion={datos.cotizacion} lineas={datos.lineas} config={config} />,
+    <DocumentoCotizacion
+      cotizacion={datos.cotizacion}
+      lineas={datos.lineas}
+      config={config}
+      perfil={perfil}
+      fondo={fondo}
+    />,
   );
 
   const nombre = nombreArchivo(datos.cotizacion.cliente_nombre, datos.cotizacion.numero, datos.cotizacion.fecha);

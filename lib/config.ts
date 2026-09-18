@@ -12,6 +12,8 @@ export interface Empresa {
   web: string;
   correo: string;
   logo_url: string | null;
+  /** Imagen del sello escaneado. Si es null, el PDF dibuja un sello vectorial con los datos de la empresa. */
+  sello_url: string | null;
 }
 export interface TextosLegales {
   notas: string[];
@@ -41,6 +43,7 @@ export const CONFIG_DEFAULT: Config = {
     web: "www.damscargo.com",
     correo: "info@damscargo.com",
     logo_url: null,
+    sello_url: null,
   },
   textos_legales: {
     notas: [
@@ -69,4 +72,20 @@ export async function leerConfig(): Promise<Config> {
     textos_legales: { ...CONFIG_DEFAULT.textos_legales, ...((mapa.textos_legales as Partial<TextosLegales>) ?? {}) },
     defaults: { ...CONFIG_DEFAULT.defaults, ...((mapa.defaults as Partial<Defaults>) ?? {}) },
   };
+}
+
+export interface Perfil {
+  nombre: string;
+  cargo: string;
+  correo: string;
+  telefono: string;
+}
+
+/** Perfil (firma del PDF) de un usuario; vacío si nunca lo llenó. */
+export async function leerPerfil(userId: string | null | undefined): Promise<Perfil> {
+  const vacio: Perfil = { nombre: "", cargo: "", correo: "", telefono: "" };
+  if (!userId) return vacio;
+  const supabase = await crearClienteServidor();
+  const { data } = await supabase.from("perfiles").select("nombre, cargo, correo, telefono").eq("user_id", userId).maybeSingle();
+  return data ?? vacio;
 }

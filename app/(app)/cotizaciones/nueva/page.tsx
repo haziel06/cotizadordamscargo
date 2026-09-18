@@ -28,11 +28,15 @@ export default async function NuevaCotizacion() {
         routing: "",
         tipo_cambio: config.defaults.tipo_cambio,
         notas_internas: "",
+        incoterm: "",
+        descuentos: [],
+        notas: null,
       }}
       lineas={[]}
       conceptos={conceptos}
       clientes={clientes}
       defaults={config.defaults}
+      textosDefault={config.textos_legales}
     />
   );
 }

@@ -3,15 +3,18 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { totalesCotizacion } from "@/lib/calculo/totales";
+import type { Descuento } from "@/lib/calculo/descuentos";
 import { pesoCobrable } from "@/lib/calculo/peso";
 import { alertasCotizacion } from "@/lib/calculo/alertas";
 import { guardarCotizacion } from "@/lib/cotizaciones/acciones";
 import type { CabeceraForm, LineaEditable } from "@/lib/cotizaciones/esquema";
-import type { Defaults } from "@/lib/config";
+import type { Defaults, TextosLegales } from "@/lib/config";
 import type { Cliente, Concepto } from "@/lib/supabase/tipos";
 import { DatosCarga } from "./DatosCarga";
 import { Servicios } from "./Servicios";
 import { ResumenVivo } from "./ResumenVivo";
+import { Descuentos } from "./Descuentos";
+import { NotasCotizacion } from "./NotasCotizacion";
 
 export interface EditorProps {
   id: string | null;
@@ -21,6 +24,7 @@ export interface EditorProps {
   conceptos: Concepto[];
   clientes: Cliente[];
   defaults: Defaults;
+  textosDefault: TextosLegales;
 }
 
 const n = (v: unknown) => (v === "" || v == null ? null : Number(v));
@@ -35,7 +39,11 @@ export function EditorCotizacion(p: EditorProps) {
 
   const tipoCambio = Number(cabecera.tipo_cambio) || 0;
   const peso = useMemo(() => pesoCobrable(n(cabecera.kilogramos), n(cabecera.kg_volumetricos)), [cabecera.kilogramos, cabecera.kg_volumetricos]);
-  const totales = useMemo(() => totalesCotizacion(lineas, tipoCambio), [lineas, tipoCambio]);
+  const descuentos = useMemo<Descuento[]>(
+    () => cabecera.descuentos.filter((d) => Number(d.valor) > 0).map((d) => ({ ambito: d.ambito, tipo: d.tipo, valor: Number(d.valor), moneda: d.moneda })),
+    [cabecera.descuentos],
+  );
+  const totales = useMemo(() => totalesCotizacion(lineas, tipoCambio, descuentos), [lineas, tipoCambio, descuentos]);
   const alertas = useMemo(
     () => alertasCotizacion({ margen_pct: totales.margen_pct, tipo_cambio: tipoCambio, lineas }),
     [totales.margen_pct, tipoCambio, lineas],
@@ -97,6 +105,10 @@ export function EditorCotizacion(p: EditorProps) {
           cbm={n(cabecera.cbm) ?? 0}
           margenDefault={p.defaults.margen_default}
         />
+
+        <Descuentos descuentos={cabecera.descuentos} onChange={(d) => cambiarCabecera({ descuentos: d })} />
+
+        <NotasCotizacion notas={cabecera.notas} porDefecto={p.textosDefault} onChange={(n) => cambiarCabecera({ notas: n })} />
       </div>
 
       <ResumenVivo totales={totales} alertas={alertas} tipoCambio={tipoCambio} />

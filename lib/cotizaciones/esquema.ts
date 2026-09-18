@@ -20,6 +20,19 @@ export const esquemaLinea = z.object({
 });
 export type LineaEditable = z.infer<typeof esquemaLinea> & { _clave: string };
 
+export const esquemaDescuento = z.object({
+  ambito: z.enum(["internacional", "local", "naviera", "total"]),
+  tipo: z.enum(["porcentaje", "monto"]),
+  valor: z.coerce.number().min(0),
+  moneda: z.enum(["USD", "GTQ"]).optional(),
+});
+export type DescuentoForm = z.infer<typeof esquemaDescuento> & { _clave: string };
+
+export const esquemaNotas = z.object({
+  notas: z.array(z.string()),
+  cuenta_cliente: z.array(z.string()),
+});
+
 export const esquemaCabecera = z.object({
   cliente_id: z.string().uuid().nullable(),
   cliente_nombre: z.string().trim().min(1, "Escribe el nombre del cliente"),
@@ -39,6 +52,10 @@ export const esquemaCabecera = z.object({
   routing: textoOpcional,
   tipo_cambio: z.coerce.number().positive("El tipo de cambio debe ser mayor que 0"),
   notas_internas: textoOpcional,
+  incoterm: textoOpcional,
+  descuentos: z.array(esquemaDescuento).default([]),
+  /** null = usar las notas de Configuración. */
+  notas: esquemaNotas.nullable().default(null),
 });
 export type Cabecera = z.infer<typeof esquemaCabecera>;
 /** Lo que maneja el formulario: campos numéricos como string o number, vacíos permitidos. */
@@ -61,6 +78,9 @@ export interface CabeceraForm {
   routing: string;
   tipo_cambio: number | string;
   notas_internas: string;
+  incoterm: string;
+  descuentos: DescuentoForm[];
+  notas: { notas: string[]; cuenta_cliente: string[] } | null;
 }
 
 export const esquemaGuardar = z.object({

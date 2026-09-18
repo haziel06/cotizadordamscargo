@@ -1,14 +1,17 @@
-import { leerConfig } from "@/lib/config";
-import { FormDefaults, FormEmpresa, FormTextos } from "@/components/configuracion/FormulariosConfig";
+import { leerConfig, leerPerfil } from "@/lib/config";
+import { usuarioRequerido } from "@/lib/supabase/server";
+import { FormDefaults, FormEmpresa, FormPerfil, FormTextos } from "@/components/configuracion/FormulariosConfig";
 
 export default async function PaginaConfiguracion() {
-  const config = await leerConfig();
+  const { usuario } = await usuarioRequerido();
+  const [config, perfil] = await Promise.all([leerConfig(), leerPerfil(usuario?.id)]);
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-primary">Configuración</h1>
-        <p className="text-sm text-muted-foreground">Datos de la empresa, logo, textos legales y valores por defecto.</p>
+        <p className="text-sm text-muted-foreground">Tu firma, datos de la empresa, logo y sello, textos legales y valores por defecto.</p>
       </div>
+      <FormPerfil perfil={perfil} correoSesion={usuario?.email ?? ""} />
       <FormEmpresa empresa={config.empresa} />
       <FormDefaults defaults={config.defaults} />
       <FormTextos textos={config.textos_legales} />

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Campo, Entrada, Selector } from "@/components/Campos";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TIPOS_CARGA } from "@/lib/etiquetas";
+import { INCOTERMS, TIPOS_CARGA } from "@/lib/etiquetas";
 import type { CabeceraForm } from "@/lib/cotizaciones/esquema";
 import type { Cliente } from "@/lib/supabase/tipos";
 import type { GanadorPeso } from "@/lib/calculo/peso";
@@ -96,17 +96,25 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso }: Props) {
             ))}
           </Selector>
         </Campo>
+        <Campo etiqueta="Incoterm" className="md:col-span-3">
+          <Selector value={c.incoterm ?? ""} onChange={(e) => onChange({ incoterm: e.target.value })}>
+            <option value="">—</option>
+            {INCOTERMS.map((i) => (
+              <option key={i.valor} value={i.valor}>{i.texto}</option>
+            ))}
+          </Selector>
+        </Campo>
         <Campo etiqueta="Origen" className="md:col-span-3">
-          <Entrada value={c.origen ?? ""} onChange={(e) => onChange({ origen: e.target.value })} placeholder="China" />
+          <Entrada value={c.origen ?? ""} onChange={(e) => onChange({ origen: e.target.value })} placeholder="Xiamen, China" />
         </Campo>
         <Campo etiqueta="Destino" className="md:col-span-3">
           <Entrada value={c.destino ?? "Guatemala"} onChange={(e) => onChange({ destino: e.target.value })} />
         </Campo>
         <Campo etiqueta="Tránsito" className="md:col-span-3">
-          <Entrada value={c.transito ?? ""} onChange={(e) => onChange({ transito: e.target.value })} placeholder="30–35 días" />
+          <Entrada value={c.transito ?? ""} onChange={(e) => onChange({ transito: e.target.value })} placeholder="35 – 45 días" />
         </Campo>
         <Campo etiqueta="Routing" className="md:col-span-6">
-          <Entrada value={c.routing ?? ""} onChange={(e) => onChange({ routing: e.target.value })} placeholder="Shanghai – Puerto Quetzal" />
+          <Entrada value={c.routing ?? ""} onChange={(e) => onChange({ routing: e.target.value })} placeholder="Vía Hong Kong – Puerto Quetzal" />
         </Campo>
 
         <Campo etiqueta="Bultos" className="md:col-span-2">

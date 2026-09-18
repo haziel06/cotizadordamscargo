@@ -27,7 +27,8 @@ type CorrelativoRow = { anio: number; ultimo: number };
 type LineaRow = {
   id: string; cotizacion_id: string; concepto_id: string | null; nombre: string;
   categoria: Enums["categoria_concepto"]; moneda: Enums["moneda"]; cantidad: number; costo_unitario: number;
-  tipo_margen: Enums["tipo_margen"]; valor_margen: number; lleva_iva: boolean; venta_total: number; orden: number;
+  tipo_margen: Enums["tipo_margen"]; valor_margen: number; lleva_iva: boolean; venta_total: number;
+  venta_bruta: number; orden: number;
 };
 type CotizacionRow = {
   id: string; numero: string; cliente_id: string | null; cliente_nombre: string; contacto: string | null;
@@ -37,6 +38,11 @@ type CotizacionRow = {
   routing: string | null; tipo_cambio: number; estado: Enums["estado_cotizacion"]; total_usd: number;
   total_gtq: number; costo_total_gtq: number; utilidad_gtq: number; margen_pct: number;
   notas_internas: string | null; created_at: string; updated_at: string;
+  incoterm: string | null; descuentos: Json; notas: Json | null; creado_por: string | null;
+};
+type PerfilRow = {
+  user_id: string; nombre: string; cargo: string; correo: string; telefono: string;
+  created_at: string; updated_at: string;
 };
 type ProveedorRow = {
   id: string; nombre: string; tipo: Enums["tipo_proveedor"]; pais: string | null;
@@ -61,6 +67,7 @@ export type Database = {
       cotizacion_lineas: Tabla<LineaRow, "cotizacion_id" | "nombre" | "categoria" | "moneda" | "tipo_margen">;
       cotizaciones: Tabla<CotizacionRow, "numero" | "cliente_nombre" | "tipo_cambio">;
       proveedores: Tabla<ProveedorRow, "nombre">;
+      perfiles: Tabla<PerfilRow, "user_id">;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -81,3 +88,4 @@ export type Proveedor = Tables<"proveedores">;
 export type Cliente = Tables<"clientes">;
 export type Cotizacion = Tables<"cotizaciones">;
 export type CotizacionLinea = Tables<"cotizacion_lineas">;
+export type Perfil = Tables<"perfiles">;

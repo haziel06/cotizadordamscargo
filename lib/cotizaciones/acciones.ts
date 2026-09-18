@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { crearClienteServidor } from "@/lib/supabase/server";
-import { totalesCotizacion } from "@/lib/calculo/totales";
+import { totalesCotizacion, ventasFinales } from "@/lib/calculo/totales";
 import { ventaLinea } from "@/lib/calculo/linea";
 import { hoyIso } from "@/lib/calculo/formato";
 import { esquemaGuardar } from "./esquema";
@@ -20,14 +20,18 @@ export async function guardarCotizacion(entrada: unknown): Promise<Resultado> {
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   const { id, cabecera, lineas } = parsed.data;
 
-  const t = totalesCotizacion(lineas, cabecera.tipo_cambio);
-  const lineasDb = lineas.map((l, i) => ({ ...l, venta_total: ventaLinea(l), orden: i }));
+  const { descuentos, notas, ...cab } = cabecera;
+  const t = totalesCotizacion(lineas, cab.tipo_cambio, descuentos);
+  const finales = ventasFinales(lineas, cab.tipo_cambio, descuentos);
+  const lineasDb = lineas.map((l, i) => ({ ...l, venta_total: finales[i], venta_bruta: ventaLinea(l), orden: i }));
 
   const supabase = await crearClienteServidor();
   const { data, error } = await supabase.rpc("guardar_cotizacion", {
     p_id: id,
     p_cabecera: {
-      ...cabecera,
+      ...cab,
+      descuentos,
+      notas,
       total_usd: t.internacional_usd + t.naviera_usd,
       total_gtq: t.total_gtq,
       costo_total_gtq: t.costo_total_gtq,

@@ -33,31 +33,58 @@ export async function guardarEmpresa(datos: z.infer<typeof esquemaEmpresa>): Pro
   return guardarClave("empresa", { ...actual.empresa, ...parsed.data });
 }
 
-/** Sube PNG o SVG al bucket público `config` y guarda la URL. */
-export async function subirLogo(form: FormData): Promise<Resultado> {
-  const archivo = form.get("logo");
+/** Sube PNG/SVG/JPG al bucket público `config` y guarda la URL en empresa.<campo>. */
+async function subirImagenEmpresa(form: FormData, campo: "logo_url" | "sello_url", nombreBase: string): Promise<Resultado> {
+  const archivo = form.get("archivo");
   if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elige un archivo." };
-  if (!["image/png", "image/svg+xml"].includes(archivo.type)) return { ok: false, error: "Solo PNG o SVG con fondo transparente." };
-  if (archivo.size > 2 * 1024 * 1024) return { ok: false, error: "El logo no debe pesar más de 2 MB." };
+  const tipos: Record<string, string> = { "image/png": "png", "image/svg+xml": "svg", "image/jpeg": "jpg" };
+  const ext = tipos[archivo.type];
+  if (!ext) return { ok: false, error: "Solo PNG, SVG o JPG." };
+  if (archivo.size > 2 * 1024 * 1024) return { ok: false, error: "La imagen no debe pesar más de 2 MB." };
 
   const supabase = await crearClienteServidor();
-  const ext = archivo.type === "image/png" ? "png" : "svg";
-  const ruta = `logo.${ext}`;
+  const ruta = `${nombreBase}.${ext}`;
   const { error } = await supabase.storage.from("config").upload(ruta, archivo, { upsert: true, contentType: archivo.type });
-  if (error) return { ok: false, error: "No se pudo subir el logo." };
+  if (error) return { ok: false, error: "No se pudo subir la imagen." };
 
   // Sufijo de versión para que el PDF y la vista previa no usen una copia en caché.
   const { data } = supabase.storage.from("config").getPublicUrl(ruta);
-  const logo_url = `${data.publicUrl}?v=${Date.now()}`;
+  const url = `${data.publicUrl}?v=${Date.now()}`;
   const actual = await leerConfig();
-  const r = await guardarClave("empresa", { ...actual.empresa, logo_url });
-  return r.ok ? { ok: true, logo_url } : r;
+  const r = await guardarClave("empresa", { ...actual.empresa, [campo]: url });
+  return r.ok ? { ok: true, logo_url: url } : r;
 }
 
-export async function quitarLogo(): Promise<Resultado> {
+export async function subirLogo(form: FormData): Promise<Resultado> {
+  return subirImagenEmpresa(form, "logo_url", "logo");
+}
+export async function subirSello(form: FormData): Promise<Resultado> {
+  return subirImagenEmpresa(form, "sello_url", "sello");
+}
+
+export async function quitarImagenEmpresa(campo: "logo_url" | "sello_url"): Promise<Resultado> {
   const actual = await leerConfig();
-  const r = await guardarClave("empresa", { ...actual.empresa, logo_url: null });
+  const r = await guardarClave("empresa", { ...actual.empresa, [campo]: null });
   return r.ok ? { ok: true, logo_url: null } : r;
+}
+
+const esquemaPerfil = z.object({
+  nombre: z.string().trim(),
+  cargo: z.string().trim(),
+  correo: z.string().trim(),
+  telefono: z.string().trim(),
+});
+/** Firma de quien cotiza (va al pie del PDF). Cada usuario edita solo la suya. */
+export async function guardarPerfil(datos: z.infer<typeof esquemaPerfil>): Promise<Resultado> {
+  const parsed = esquemaPerfil.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: "Revisa los datos." };
+  const supabase = await crearClienteServidor();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return { ok: false, error: "Sesión vencida." };
+  const { error } = await supabase.from("perfiles").upsert({ user_id: auth.user.id, ...parsed.data });
+  if (error) return { ok: false, error: "No se pudo guardar el perfil." };
+  revalidatePath("/configuracion");
+  return { ok: true };
 }
 
 export async function guardarTextosLegales(datos: { notas: string[]; cuenta_cliente: string[] }): Promise<Resultado> {

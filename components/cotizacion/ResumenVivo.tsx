@@ -35,6 +35,9 @@ export function ResumenVivo({ totales: t, alertas, tipoCambio }: Props) {
         <p className="mb-3 text-xs text-amber-900/80">No aparece en el PDF del cliente.</p>
         <dl className="space-y-2 text-sm">
           <Fila etiqueta="Costo total" valor={formatoMoneda(t.costo_total_gtq, "GTQ")} />
+          {t.descuento_total_gtq > 0 && (
+            <Fila etiqueta="Descuento aplicado" valor={`− ${formatoMoneda(t.descuento_total_gtq, "GTQ")}`} clase="text-amber-700" />
+          )}
           <Fila etiqueta="Venta sin IVA" valor={formatoMoneda(t.venta_total_gtq, "GTQ")} />
           <Fila etiqueta="Utilidad" valor={formatoMoneda(t.utilidad_gtq, "GTQ")} clase={t.utilidad_gtq < 0 ? "text-destructive" : "text-verde"} />
           <Fila etiqueta="Margen sobre costo" valor={formatoPorcentaje(t.margen_pct)} grande clase={margenBajo ? "text-amber-700" : "text-verde"} />

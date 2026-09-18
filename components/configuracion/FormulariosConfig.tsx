@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Campo, Entrada, Selector } from "@/components/Campos";
 import { TIPOS_MARGEN } from "@/lib/etiquetas";
 import type { Config } from "@/lib/config";
-import { guardarDefaults, guardarEmpresa, guardarTextosLegales, quitarLogo, subirLogo } from "@/lib/config-acciones";
+import type { Perfil } from "@/lib/config";
+import { guardarDefaults, guardarEmpresa, guardarPerfil, guardarTextosLegales, quitarImagenEmpresa, subirLogo, subirSello } from "@/lib/config-acciones";
 
 function useGuardar() {
   const [pendiente, start] = useTransition();
@@ -24,59 +25,69 @@ function Estado({ msg }: { msg: { ok: boolean; texto: string } | null }) {
   return <span className={msg.ok ? "text-sm text-verde" : "text-sm text-destructive"}>{msg.texto}</span>;
 }
 
-/* ---------- Empresa + logo ---------- */
+/* ---------- Subir imagen (logo / sello) ---------- */
+function SubirImagen({ titulo, ayuda, url, subir, campo, onChange }: {
+  titulo: string; ayuda: string; url: string | null;
+  subir: (fd: FormData) => Promise<{ ok: boolean; error?: string; logo_url?: string | null }>;
+  campo: "logo_url" | "sello_url";
+  onChange: (u: string | null) => void;
+}) {
+  const { pendiente, msg, correr } = useGuardar();
+  const archivo = useRef<HTMLInputElement>(null);
+  return (
+    <div className="flex flex-wrap items-start gap-6">
+      <div className="flex h-24 w-72 items-center justify-center rounded border bg-[repeating-conic-gradient(#eee_0_25%,#fff_0_50%)] bg-[length:16px_16px] p-2">
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={titulo} className="max-h-full max-w-full object-contain" />
+        ) : (
+          <span className="px-2 text-center text-xs text-muted-foreground">{ayuda}</span>
+        )}
+      </div>
+      <div className="space-y-2 text-sm">
+        <div className="font-medium">{titulo}</div>
+        <input ref={archivo} type="file" accept="image/png,image/svg+xml,image/jpeg" className="block text-sm" />
+        <div className="flex items-center gap-2">
+          <Button size="sm" disabled={pendiente} onClick={() => {
+            const f = archivo.current?.files?.[0];
+            if (!f) return;
+            const fd = new FormData();
+            fd.set("archivo", f);
+            correr(async () => { const r = await subir(fd); if (r.ok) onChange(r.logo_url ?? null); return r; });
+          }}>
+            Subir
+          </Button>
+          {url && (
+            <Button size="sm" variant="ghost" disabled={pendiente}
+              onClick={() => correr(async () => { const r = await quitarImagenEmpresa(campo); if (r.ok) onChange(null); return r; })}>
+              Quitar
+            </Button>
+          )}
+          <Estado msg={msg} />
+        </div>
+        <p className="text-xs text-muted-foreground">PNG, SVG o JPG, máximo 2 MB.</p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Empresa + logo + sello ---------- */
 export function FormEmpresa({ empresa }: { empresa: Config["empresa"] }) {
   const [e, setE] = useState(empresa);
   const [logo, setLogo] = useState(empresa.logo_url);
+  const [sello, setSello] = useState(empresa.sello_url);
   const { pendiente, msg, correr } = useGuardar();
-  const archivo = useRef<HTMLInputElement>(null);
   const set = (k: keyof typeof e) => (ev: React.ChangeEvent<HTMLInputElement>) => setE({ ...e, [k]: ev.target.value });
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Datos de la empresa</CardTitle>
-        <CardDescription>Salen en el encabezado del PDF que recibe el cliente.</CardDescription>
+        <CardDescription>Salen en el encabezado, el sello y el pie del PDF que recibe el cliente.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="flex flex-wrap items-start gap-6">
-          <div className="flex h-24 w-72 items-center justify-center rounded border bg-[repeating-conic-gradient(#eee_0_25%,#fff_0_50%)] bg-[length:16px_16px] p-2">
-            {logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={logo} alt="Logo" className="max-h-full max-w-full object-contain" />
-            ) : (
-              <span className="text-sm text-muted-foreground">Sin logo: el PDF mostrará el nombre en texto</span>
-            )}
-          </div>
-          <div className="space-y-2 text-sm">
-            <input ref={archivo} type="file" accept="image/png,image/svg+xml" className="block text-sm" />
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                disabled={pendiente}
-                onClick={() => {
-                  const f = archivo.current?.files?.[0];
-                  if (!f) return;
-                  const fd = new FormData();
-                  fd.set("logo", f);
-                  correr(async () => {
-                    const r = await subirLogo(fd);
-                    if (r.ok) setLogo(r.logo_url ?? null);
-                    return r;
-                  });
-                }}
-              >
-                Subir logo
-              </Button>
-              {logo && (
-                <Button size="sm" variant="ghost" disabled={pendiente} onClick={() => correr(async () => { const r = await quitarLogo(); if (r.ok) setLogo(null); return r; })}>
-                  Quitar
-                </Button>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">PNG o SVG con fondo transparente, máximo 2 MB. En el PDF va arriba a la izquierda con 55 px de alto.</p>
-          </div>
-        </div>
+        <SubirImagen titulo="Logo" ayuda="Sin logo: el PDF mostrará el nombre en texto" url={logo} subir={subirLogo} campo="logo_url" onChange={setLogo} />
+        <SubirImagen titulo="Sello" ayuda="Sin imagen: el PDF dibuja un sello con la razón social, dirección y PBX" url={sello} subir={subirSello} campo="sello_url" onChange={setSello} />
 
         <div className="grid gap-4 md:grid-cols-2">
           <Campo etiqueta="Razón social"><Entrada value={e.razon_social} onChange={set("razon_social")} /></Campo>
@@ -90,9 +101,36 @@ export function FormEmpresa({ empresa }: { empresa: Config["empresa"] }) {
           <Campo etiqueta="Correo"><Entrada value={e.correo} onChange={set("correo")} /></Campo>
         </div>
         <div className="flex items-center gap-3">
-          <Button disabled={pendiente} onClick={() => correr(() => { const { logo_url: _l, ...datos } = e; void _l; return guardarEmpresa(datos); })}>
+          <Button disabled={pendiente} onClick={() => correr(() => { const { logo_url: _l, sello_url: _s, ...datos } = e; void _l; void _s; return guardarEmpresa(datos); })}>
             Guardar datos
           </Button>
+          <Estado msg={msg} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ---------- Perfil de quien cotiza (firma del PDF) ---------- */
+export function FormPerfil({ perfil, correoSesion }: { perfil: Perfil; correoSesion: string }) {
+  const [p, setP] = useState({ ...perfil, correo: perfil.correo || correoSesion });
+  const { pendiente, msg, correr } = useGuardar();
+  const set = (k: keyof Perfil) => (ev: React.ChangeEvent<HTMLInputElement>) => setP({ ...p, [k]: ev.target.value });
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Mi firma</CardTitle>
+        <CardDescription>Aparece al pie de las cotizaciones que tú crees. Cada usuario tiene la suya.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Campo etiqueta="Nombre"><Entrada value={p.nombre} onChange={set("nombre")} placeholder="Jose Martinez" /></Campo>
+          <Campo etiqueta="Cargo"><Entrada value={p.cargo} onChange={set("cargo")} placeholder="Pricing DAMS Cargo" /></Campo>
+          <Campo etiqueta="Correo"><Entrada value={p.correo} onChange={set("correo")} /></Campo>
+          <Campo etiqueta="Teléfono"><Entrada value={p.telefono} onChange={set("telefono")} placeholder="4115-5716" /></Campo>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button disabled={pendiente} onClick={() => correr(() => guardarPerfil(p))}>Guardar firma</Button>
           <Estado msg={msg} />
         </div>
       </CardContent>

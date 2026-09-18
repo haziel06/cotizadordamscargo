@@ -31,4 +31,6 @@ export interface Totales {
   venta_total_gtq: number;
   utilidad_gtq: number;
   margen_pct: number;
+  /** Suma de descuentos aplicados, en Q. Solo interno. */
+  descuento_total_gtq: number;
 }

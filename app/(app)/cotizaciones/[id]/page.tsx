@@ -1,8 +1,11 @@
 import { notFound } from "next/navigation";
 import { EditorCotizacion } from "@/components/cotizacion/EditorCotizacion";
 import { AccionesCotizacion } from "@/components/cotizacion/AccionesCotizacion";
-import { leerConfig } from "@/lib/config";
+import { leerConfig, type TextosLegales } from "@/lib/config";
+import type { DescuentoForm } from "@/lib/cotizaciones/esquema";
 import { datosEditor, estadoEfectivo, obtenerCotizacion } from "@/lib/cotizaciones/consultas";
+
+type DescuentoGuardado = Omit<DescuentoForm, "_clave">;
 
 export default async function PaginaCotizacion(props: PageProps<"/cotizaciones/[id]">) {
   const { id } = await props.params;
@@ -36,6 +39,9 @@ export default async function PaginaCotizacion(props: PageProps<"/cotizaciones/[
           routing: c.routing ?? "",
           tipo_cambio: Number(c.tipo_cambio),
           notas_internas: c.notas_internas ?? "",
+          incoterm: c.incoterm ?? "",
+          descuentos: ((c.descuentos as DescuentoGuardado[] | null) ?? []).map((d, i) => ({ ...d, _clave: `d-${i}` })),
+          notas: (c.notas as TextosLegales | null) ?? null,
         }}
         lineas={lineas.map((l) => ({
           _clave: l.id,
@@ -52,6 +58,7 @@ export default async function PaginaCotizacion(props: PageProps<"/cotizaciones/[
         conceptos={conceptos}
         clientes={clientes}
         defaults={config.defaults}
+        textosDefault={config.textos_legales}
       />
     </div>
   );
