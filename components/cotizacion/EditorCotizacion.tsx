@@ -13,7 +13,7 @@ import type { CabeceraForm, LineaEditable } from "@/lib/cotizaciones/esquema";
 import type { Defaults, TextosLegales } from "@/lib/config";
 import type { Cliente } from "@/lib/supabase/tipos";
 import type { Catalogo } from "@/lib/tarifas/consultas";
-import { infoServicio } from "@/lib/etiquetas";
+import { LIMITE_TICKET_USD, servicioCombinado } from "@/lib/etiquetas";
 import { DatosCarga } from "./DatosCarga";
 import { Servicios } from "./Servicios";
 import { ResumenVivo } from "./ResumenVivo";
@@ -30,6 +30,10 @@ export interface EditorProps {
   defaults: Defaults;
   recargos: Recargos;
   textosDefault: TextosLegales;
+  /** Admin: ve costos, mueve el margen, agrega líneas manuales, edita cualquier cotización. */
+  esAdmin: boolean;
+  /** false = solo lectura (cotización de otra persona vista por un usuario normal). */
+  puedeEditar: boolean;
 }
 
 const n = (v: unknown) => (v === "" || v == null ? null : Number(v));
@@ -41,7 +45,10 @@ export function EditorCotizacion(p: EditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [guardando, startTransition] = useTransition();
   const [sucio, setSucio] = useState(false);
-  const servicio = infoServicio(cabecera.tipo_servicio);
+  const servicio = useMemo(() => servicioCombinado(cabecera.tipos_servicio), [cabecera.tipos_servicio]);
+  const esCourier = cabecera.tipos_servicio.includes("courier");
+  const valorMerc = n(cabecera.valor_mercaderia) ?? 0;
+  const sugiereTicket = esCourier && cabecera.segmento_courier === "consolidado" && valorMerc > LIMITE_TICKET_USD;
 
   const tipoCambio = Number(cabecera.tipo_cambio) || 0;
   const peso = useMemo(() => pesoCobrable(n(cabecera.kilogramos), n(cabecera.kg_volumetricos)), [cabecera.kilogramos, cabecera.kg_volumetricos]);
@@ -51,10 +58,11 @@ export function EditorCotizacion(p: EditorProps) {
   );
   const totales = useMemo(() => totalesCotizacion(lineas, tipoCambio, descuentos, p.recargos), [lineas, tipoCambio, descuentos, p.recargos]);
   const alertas = useMemo(() => {
-    const base = alertasCotizacion({ margen_pct: totales.margen_pct, tipo_cambio: tipoCambio, lineas });
+    const base = alertasCotizacion({ margen_pct: totales.margen_pct, tipo_cambio: tipoCambio, lineas, kilogramos: n(cabecera.kilogramos) });
     const pendientes = lineas.filter((l) => l.pendiente).map((l) => ({ tipo: "linea_cero" as const, mensaje: `"${l.nombre}" viene del tarifario sin monto confirmado: revisa el precio` }));
-    return [...base, ...pendientes];
-  }, [totales.margen_pct, tipoCambio, lineas]);
+    const ticket = sugiereTicket ? [{ tipo: "linea_cero" as const, mensaje: `La mercadería supera $${LIMITE_TICKET_USD.toLocaleString("en-US")}: normalmente va como Ticket (trámite aduanero + entrega)` }] : [];
+    return [...base, ...pendientes, ...ticket];
+  }, [totales.margen_pct, tipoCambio, lineas, cabecera.kilogramos, sugiereTicket]);
 
   const cambiarCabecera = (c: Partial<CabeceraForm>) => {
     setCabecera((x) => ({ ...x, ...c }));
@@ -71,8 +79,8 @@ export function EditorCotizacion(p: EditorProps) {
       const r = await guardarCotizacion({
         id: p.id,
         cabecera,
-        lineas: lineas.map(({ _clave, unidad, pendiente, ...l }) => {
-          void _clave; void unidad; void pendiente;
+        lineas: lineas.map(({ _clave, unidad, pendiente, seccion, cantidad_manual, ...l }) => {
+          void _clave; void unidad; void pendiente; void seccion; void cantidad_manual;
           return l;
         }),
       });
@@ -102,30 +110,36 @@ export function EditorCotizacion(p: EditorProps) {
           </div>
           <div className="flex items-center gap-3">
             {error && <span className="text-sm text-destructive">{error}</span>}
-            <Button onClick={guardar} disabled={guardando || (!sucio && !!p.id)} size="lg">
-              {guardando ? "Guardando…" : p.id ? "Guardar cambios" : "Guardar cotización"}
-            </Button>
+            {p.puedeEditar && (
+              <Button onClick={guardar} disabled={guardando || (!sucio && !!p.id)} size="lg">
+                {guardando ? "Guardando…" : p.id ? "Guardar cambios" : "Guardar cotización"}
+              </Button>
+            )}
           </div>
         </div>
 
-        <DatosCarga cabecera={cabecera} onChange={cambiarCabecera} clientes={p.clientes} peso={peso} servicio={servicio} />
+        <fieldset disabled={!p.puedeEditar} className="min-w-0 space-y-6 disabled:opacity-80">
+          <DatosCarga cabecera={cabecera} onChange={cambiarCabecera} clientes={p.clientes} peso={peso} servicio={servicio} />
 
-        <Servicios
-          servicio={servicio}
-          lineas={lineas}
-          catalogo={p.catalogo}
-          onChange={cambiarLineas}
-          medidas={{ pesoCobrable: peso.peso, cbm: n(cabecera.cbm) ?? 0 }}
-          margenDefault={p.defaults.margen_default}
-          recargos={p.recargos}
-        />
+          <Servicios
+            servicio={servicio}
+            segmentoCourier={esCourier ? cabecera.segmento_courier : null}
+            lineas={lineas}
+            catalogo={p.catalogo}
+            onChange={cambiarLineas}
+            medidas={{ pesoCobrable: peso.peso, cbm: n(cabecera.cbm) ?? 0 }}
+            margenDefault={p.defaults.margen_default}
+            recargos={p.recargos}
+            esAdmin={p.esAdmin}
+          />
 
-        <Descuentos descuentos={cabecera.descuentos} onChange={(d) => cambiarCabecera({ descuentos: d })} />
+          <Descuentos descuentos={cabecera.descuentos} onChange={(d) => cambiarCabecera({ descuentos: d })} />
 
-        <NotasCotizacion notas={cabecera.notas} porDefecto={p.textosDefault} onChange={(nn) => cambiarCabecera({ notas: nn })} />
+          <NotasCotizacion notas={cabecera.notas} porDefecto={p.textosDefault} onChange={(nn) => cambiarCabecera({ notas: nn })} />
+        </fieldset>
       </div>
 
-      <ResumenVivo totales={totales} alertas={alertas} tipoCambio={tipoCambio} recargos={p.recargos} />
+      <ResumenVivo totales={totales} alertas={alertas} tipoCambio={tipoCambio} recargos={p.recargos} esAdmin={p.esAdmin} />
     </div>
   );
 }

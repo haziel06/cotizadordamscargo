@@ -17,7 +17,12 @@ export interface LineaCalculo {
   lleva_iva: boolean;
   /** Si el costo es de proveedor extranjero, lleva ISR y "no domiciliada" encima (ver Recargos). */
   aplica_recargos?: boolean;
+  /** Pago a un tercero (almacenaje, impuestos) que el cliente cubre aparte: sin margen, fuera de los totales. */
+  cuenta_ajena?: boolean;
 }
+
+/** Peso a partir del cual la carga aérea se marca como sobrepeso. */
+export const SOBREPESO_KG = 21000;
 
 /**
  * Impuestos que la empresa carga sobre el costo de proveedores extranjeros antes del margen.
@@ -45,4 +50,7 @@ export interface Totales {
   margen_pct: number;
   /** Suma de descuentos aplicados, en Q. Solo interno. */
   descuento_total_gtq: number;
+  /** Pagos a terceros (cuenta ajena) que van aparte del total, por moneda. */
+  ajenos_usd: number;
+  ajenos_gtq: number;
 }

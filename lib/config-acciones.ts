@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { leerConfig } from "@/lib/config";
+import { sesionActual } from "@/lib/sesion";
 
 type Resultado = { ok: true; logo_url?: string | null } | { ok: false; error: string };
 
@@ -18,7 +19,10 @@ const esquemaEmpresa = z.object({
   correo: z.string().trim(),
 });
 
+/** Empresa, defaults, fórmula y textos: solo administradores (la base también lo exige). */
 async function guardarClave(clave: string, valor: unknown): Promise<Resultado> {
+  const s = await sesionActual();
+  if (!s?.esAdmin) return { ok: false, error: "Solo un administrador puede cambiar esto." };
   const supabase = await crearClienteServidor();
   const { error } = await supabase.from("config").upsert({ clave, valor: valor as never });
   if (error) return { ok: false, error: "No se pudo guardar." };
@@ -35,6 +39,8 @@ export async function guardarEmpresa(datos: z.infer<typeof esquemaEmpresa>): Pro
 
 /** Sube PNG/SVG/JPG al bucket público `config` y guarda la URL en empresa.<campo>. */
 async function subirImagenEmpresa(form: FormData, campo: "logo_url" | "sello_url", nombreBase: string): Promise<Resultado> {
+  const s = await sesionActual();
+  if (!s?.esAdmin) return { ok: false, error: "Solo un administrador puede cambiar esto." };
   const archivo = form.get("archivo");
   if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elige un archivo." };
   const tipos: Record<string, string> = { "image/png": "png", "image/svg+xml": "svg", "image/jpeg": "jpg" };

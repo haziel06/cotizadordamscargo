@@ -1,6 +1,6 @@
 "use client";
-import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Lock, Package, Plus, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Casilla, Entrada, Selector } from "@/components/Campos";
@@ -9,19 +9,23 @@ import { ventaLinea } from "@/lib/calculo/linea";
 import { formatoMoneda, formatoFecha } from "@/lib/calculo/formato";
 import type { LineaEditable } from "@/lib/cotizaciones/esquema";
 import type { Catalogo } from "@/lib/tarifas/consultas";
-import type { Concepto, TarifaRuta } from "@/lib/supabase/tipos";
+import type { Concepto, SegmentoCourier, TarifaRuta } from "@/lib/supabase/tipos";
 import type { Categoria, Moneda, Recargos, TipoMargen, Unidad } from "@/lib/calculo/tipos";
 import { ControlMargen } from "./ControlMargen";
 import { cn } from "@/lib/utils";
 
 interface Props {
   servicio: DefServicio;
+  /** Solo cuando la cotización incluye courier: habilita las plantillas Ticket / Consolidado. */
+  segmentoCourier: SegmentoCourier | null;
   lineas: LineaEditable[];
   catalogo: Catalogo;
   onChange: (fn: (ls: LineaEditable[]) => LineaEditable[]) => void;
   medidas: { pesoCobrable: number; cbm: number };
   margenDefault: { tipo: TipoMargen; valor: number };
   recargos: Recargos;
+  /** Admin: ve costo y margen, mueve la barra, agrega líneas manuales. Usuario normal: solo elige y pone cantidades. */
+  esAdmin: boolean;
 }
 
 let contador = 0;
@@ -35,8 +39,9 @@ const textoVia = (via: string | null) => {
   return `Vía ${via}`;
 };
 const LB_POR_KG = 2.20462;
+const SIGUEN_MEDIDAS: Unidad[] = ["kg", "libra", "cbm", "pie_cubico"];
 
-export function Servicios({ servicio, lineas, catalogo, onChange, medidas, margenDefault, recargos }: Props) {
+export function Servicios({ servicio, segmentoCourier, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin }: Props) {
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>(() => Object.fromEntries(servicio.secciones.map((s, i) => [s, i < 2])));
   const [busquedaRuta, setBusquedaRuta] = useState<Record<string, string>>({});
   const [verTodas, setVerTodas] = useState(false);
@@ -44,7 +49,7 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
   const provNombre = useMemo(() => new Map(catalogo.proveedores.map((p) => [p.id, p.nombre])), [catalogo.proveedores]);
   const tarifarioPorId = useMemo(() => new Map(catalogo.tarifarios.map((t) => [t.id, t])), [catalogo.tarifarios]);
 
-  /** Cantidad inicial según la unidad del concepto (spec §7.2-B, ampliada con libras). */
+  /** Cantidad según la unidad del concepto (spec §7.2-B, ampliada con libras). */
   const cantidadPara = (u: Unidad) => {
     if (u === "kg") return medidas.pesoCobrable || 1;
     if (u === "libra") return medidas.pesoCobrable ? Math.round(medidas.pesoCobrable * LB_POR_KG * 100) / 100 : 1;
@@ -52,21 +57,27 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
     if (u === "pie_cubico") return medidas.cbm ? Math.round(medidas.cbm * 35.3147 * 100) / 100 : 1;
     return 1;
   };
+  // Las líneas por peso/volumen siguen a la carga hasta que alguien escribe la cantidad a mano.
+  const medidasRef = useRef(medidas);
+  useEffect(() => {
+    if (medidasRef.current.pesoCobrable === medidas.pesoCobrable && medidasRef.current.cbm === medidas.cbm) return;
+    medidasRef.current = medidas;
+    onChange((ls) => ls.map((l) => (l.unidad && SIGUEN_MEDIDAS.includes(l.unidad as Unidad) && !l.cantidad_manual ? { ...l, cantidad: cantidadPara(l.unidad as Unidad) } : l)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [medidas.pesoCobrable, medidas.cbm]);
 
-  const agregarConcepto = (c: Concepto) => {
+  const lineaDesdeConcepto = (c: Concepto): LineaEditable => {
     const t = c.tarifario_id ? tarifarioPorId.get(c.tarifario_id) : undefined;
-    onChange((ls) => [
-      ...ls,
-      {
-        _clave: clave(), concepto_id: c.id, nombre: c.nombre, categoria: c.categoria, moneda: c.moneda,
-        cantidad: cantidadPara(c.unidad), costo_unitario: Number(c.costo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen),
-        lleva_iva: c.aplica_iva, aplica_recargos: c.aplica_recargos, nota: null, nota_visible: true,
-        proveedor_nombre: c.proveedor_id ? (provNombre.get(c.proveedor_id) ?? null) : null,
-        ruta: t?.origen && t?.destino && t.seccion !== "gastos_locales" ? `${t.origen} → ${t.destino}` : null,
-        unidad: c.unidad, pendiente: c.pendiente, seccion: c.seccion,
-      },
-    ]);
+    return {
+      _clave: clave(), concepto_id: c.id, ruta_id: null, nombre: c.nombre, categoria: c.categoria, moneda: c.moneda,
+      cantidad: cantidadPara(c.unidad), costo_unitario: Number(c.costo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen),
+      lleva_iva: c.aplica_iva, aplica_recargos: c.aplica_recargos, cuenta_ajena: c.cuenta_ajena, nota: null, nota_visible: true,
+      proveedor_nombre: c.proveedor_id ? (provNombre.get(c.proveedor_id) ?? null) : null,
+      ruta: t?.origen && t?.destino && t.seccion !== "gastos_locales" ? `${t.origen} → ${t.destino}` : null,
+      unidad: c.unidad, pendiente: c.pendiente, seccion: c.seccion,
+    };
   };
+  const agregarConcepto = (c: Concepto) => onChange((ls) => [...ls, lineaDesdeConcepto(c)]);
   const quitarConcepto = (id: string) => onChange((ls) => ls.filter((l) => l.concepto_id !== id));
 
   const agregarRuta = (r: TarifaRuta) => {
@@ -75,9 +86,9 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
     onChange((ls) => [
       ...ls,
       {
-        _clave: clave(), concepto_id: null, nombre: `Flete ${servicio.valor === "aereo" ? "aéreo" : "marítimo"} ${r.origen} → ${r.destino}`, categoria: "internacional", moneda: t?.moneda ?? "USD",
+        _clave: clave(), concepto_id: null, ruta_id: r.id, nombre: `Flete ${t?.seccion === "flete_aereo" ? "aéreo" : "marítimo"} ${r.origen} → ${r.destino}`, categoria: "internacional", moneda: t?.moneda ?? "USD",
         cantidad: cantidadPara(r.unidad), costo_unitario: Number(r.costo ?? 0), tipo_margen: r.tipo_margen, valor_margen: Number(r.valor_margen),
-        lleva_iva: true, aplica_recargos: r.aplica_recargos, nota: [textoVia(r.via), r.transito ? `Tránsito ${r.transito} días` : null].filter(Boolean).join(" · ") || null,
+        lleva_iva: true, aplica_recargos: r.aplica_recargos, cuenta_ajena: false, nota: [textoVia(r.via), r.transito ? `Tránsito ${r.transito} días` : null].filter(Boolean).join(" · ") || null,
         nota_visible: true, proveedor_nombre: prov ?? null, ruta: `${r.origen} → ${r.destino}`, unidad: r.unidad, pendiente: r.costo == null, seccion: t?.seccion ?? "flete_maritimo",
       },
     ]);
@@ -88,11 +99,37 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
     onChange((ls) => [
       ...ls,
       {
-        _clave: clave(), concepto_id: null, nombre: "", categoria: s.categoria, moneda: s.moneda, cantidad: 1, costo_unitario: 0,
-        tipo_margen: margenDefault.tipo, valor_margen: margenDefault.valor, lleva_iva: true, aplica_recargos: false,
+        _clave: clave(), concepto_id: null, ruta_id: null, nombre: "", categoria: s.categoria, moneda: s.moneda, cantidad: 1, costo_unitario: 0,
+        tipo_margen: seccion === "gastos_ajenos" ? "precio_fijo" : margenDefault.tipo, valor_margen: seccion === "gastos_ajenos" ? 0 : margenDefault.valor,
+        lleva_iva: seccion !== "gastos_ajenos", aplica_recargos: false, cuenta_ajena: seccion === "gastos_ajenos",
         nota: null, nota_visible: true, proveedor_nombre: null, ruta: null, seccion,
       },
     ]);
+  };
+
+  /**
+   * Plantillas de courier. Consolidado = solo la libra. Ticket = libra + trámite aduanero + entrega,
+   * y el almacenaje (Combex) como pago a tercero, aparte. Solo agrega lo que falte.
+   */
+  const armarCourier = (segmento: SegmentoCourier) => {
+    const marcadosAhora = new Set(lineas.map((l) => l.concepto_id));
+    const libras = medidas.pesoCobrable ? medidas.pesoCobrable * LB_POR_KG : 0;
+    const primero = (xs: Concepto[]) => xs.find((c) => !marcadosAhora.has(c.id));
+    const nuevas: Concepto[] = [];
+    const courier = primero(catalogo.conceptos.filter((c) => c.seccion === "courier" && c.unidad === "libra"));
+    if (courier) nuevas.push(courier);
+    if (segmento === "ticket") {
+      const docs = catalogo.conceptos.filter((c) => c.seccion === "documentacion" && /tr[aá]mite/i.test(c.nombre));
+      const tramite = primero(docs.filter((c) => /courier|a[eé]reo|lcl/i.test(c.nombre))) ?? primero(docs);
+      if (tramite) nuevas.push(tramite);
+      const entregas = catalogo.conceptos.filter((c) => c.seccion === "entrega_domicilio");
+      const entrega = primero(entregas.filter((c) => (c.rango_desde == null || libras >= Number(c.rango_desde)) && (c.rango_hasta == null || libras <= Number(c.rango_hasta)))) ?? primero(entregas);
+      if (entrega) nuevas.push(entrega);
+      for (const a of catalogo.conceptos.filter((c) => c.seccion === "gastos_ajenos" || c.cuenta_ajena)) if (!marcadosAhora.has(a.id)) nuevas.push(a);
+    }
+    if (!nuevas.length) return;
+    onChange((ls) => [...ls, ...nuevas.filter((c) => !ls.some((l) => l.concepto_id === c.id)).map(lineaDesdeConcepto)]);
+    setAbiertas((a) => ({ ...a, ...Object.fromEntries(nuevas.map((c) => [c.seccion, true])) }));
   };
 
   const editar = (k: string, cambios: Partial<LineaEditable>) => onChange((ls) => ls.map((l) => (l._clave === k ? { ...l, ...cambios } : l)));
@@ -114,18 +151,31 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
     if (l.seccion && secciones.includes(l.seccion)) return l.seccion;
     const c = l.concepto_id ? catalogo.conceptos.find((x) => x.id === l.concepto_id) : undefined;
     if (c && secciones.includes(c.seccion)) return c.seccion;
+    if (l.cuenta_ajena && secciones.includes("gastos_ajenos")) return "gastos_ajenos";
     return secciones.find((x) => infoSeccion(x).categoria === l.categoria) ?? secciones[0];
   };
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle>Servicios</CardTitle>
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             <Casilla checked={verTodas} onChange={(e) => setVerTodas(e.target.checked)} /> Mostrar todas las secciones
           </label>
         </div>
+        {segmentoCourier && segmentoCourier !== "documentos" && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+            <Package className="size-4 text-primary" />
+            <span className="font-medium text-primary">Courier {segmentoCourier === "ticket" ? "Ticket" : "Consolidado"}</span>
+            <span className="text-xs text-muted-foreground">
+              {segmentoCourier === "ticket" ? "Libra + trámite aduanero + entrega; el almacenaje va aparte como pago a tercero." : "Solo se cobra la libra."}
+            </span>
+            <Button size="sm" className="ml-auto" onClick={() => armarCourier(segmentoCourier)}>
+              <Wand2 /> Armar {segmentoCourier === "ticket" ? "Ticket" : "Consolidado"}
+            </Button>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-3">
         {secciones.map((sec) => {
@@ -134,6 +184,7 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
           const tarifariosRuta = catalogo.tarifarios.filter((t) => t.seccion === sec && catalogo.rutas.some((r) => r.tarifario_id === t.id));
           const propias = lineas.filter((l) => seccionDe(l) === sec);
           const abierta = abiertas[sec] ?? false;
+          const esAjena = sec === "gastos_ajenos";
           // agrupar conceptos por tarifario (proveedor)
           const grupos = new Map<string, Concepto[]>();
           for (const c of conceptos) {
@@ -141,7 +192,7 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
             grupos.set(k, [...(grupos.get(k) ?? []), c]);
           }
           return (
-            <section key={sec} className="rounded-lg border">
+            <section key={sec} className={cn("rounded-lg border", esAjena && "border-dashed")}>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left" onClick={() => setAbiertas((a) => ({ ...a, [sec]: !abierta }))}>
                 {abierta ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
                 <span className="font-semibold text-primary">{info.texto}</span>
@@ -173,7 +224,10 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
                                 <span className="w-24 text-muted-foreground">{r.pais}</span>
                                 <span className="font-medium">{r.origen}</span>
                                 <span className="text-xs text-muted-foreground">{r.via && r.via !== "Direct" ? `vía ${r.via}` : "directo"} · {r.transito ?? "—"} días</span>
-                                <span className="num ml-auto">{r.costo == null ? <em className="text-amber-700">falta monto</em> : `${formatoMoneda(Number(r.costo), t.moneda)} / ${textoUnidad(r.unidad).replace("por ", "")}`}</span>
+                                <span className="num ml-auto">
+                                  {r.costo == null && esAdmin ? <em className="text-amber-700">falta monto</em> : `${formatoMoneda(Number(esAdmin ? r.costo : r.valor_margen), t.moneda)} / ${textoUnidad(r.unidad).replace("por ", "")}`}
+                                  {esAdmin && r.costo != null && <span className="ml-1 text-[10px] text-muted-foreground">costo</span>}
+                                </span>
                                 <Button size="xs" onClick={() => { agregarRuta(r); setBusquedaRuta((b) => ({ ...b, [t.id]: "" })); }}><Plus /> Agregar</Button>
                               </li>
                             ))}
@@ -194,24 +248,29 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
                           {t?.vencido && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[11px] text-red-900">Vencido</span>}
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                          {cs.map((c) => (
-                            <label key={c.id} className={cn("flex cursor-pointer items-center gap-1.5 text-sm", c.pendiente && "text-amber-800")} title={c.notas ?? undefined}>
-                              <Casilla checked={marcados.has(c.id)} onChange={(e) => (e.target.checked ? agregarConcepto(c) : quitarConcepto(c.id))} />
-                              {c.nombre}
-                              <span className="text-xs text-muted-foreground">
-                                {c.unidad !== "envio" ? `(${textoUnidad(c.unidad)})` : ""} {c.pendiente ? "· falta monto" : ""}
-                              </span>
-                            </label>
-                          ))}
+                          {cs.map((c) => {
+                            const ventaUnit = ventaLinea({ nombre: c.nombre, categoria: c.categoria, moneda: c.moneda, cantidad: 1, costo_unitario: Number(c.costo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen), lleva_iva: c.aplica_iva, aplica_recargos: c.aplica_recargos }, recargos);
+                            return (
+                              <label key={c.id} className={cn("flex cursor-pointer items-center gap-1.5 text-sm", c.pendiente && "text-amber-800")} title={esAdmin ? (c.notas ?? undefined) : undefined}>
+                                <Casilla checked={marcados.has(c.id)} onChange={(e) => (e.target.checked ? agregarConcepto(c) : quitarConcepto(c.id))} />
+                                {c.nombre}
+                                <span className="text-xs text-muted-foreground">
+                                  {c.pendiente && !c.cuenta_ajena ? "· falta monto" : ventaUnit > 0 ? `· ${formatoMoneda(ventaUnit, c.moneda)}${c.unidad !== "envio" ? ` ${textoUnidad(c.unidad)}` : ""}` : c.unidad !== "envio" ? `(${textoUnidad(c.unidad)})` : ""}
+                                </span>
+                              </label>
+                            );
+                          })}
                         </div>
                       </div>
                     );
                   })}
                   {conceptos.length === 0 && tarifariosRuta.length === 0 && <span className="text-xs text-muted-foreground">Sin tarifas cargadas en esta sección.</span>}
 
-                  <div>
-                    <Button variant="outline" size="sm" onClick={() => agregarManual(sec)}><Plus /> Línea manual</Button>
-                  </div>
+                  {(esAdmin || esAjena) && (
+                    <div>
+                      <Button variant="outline" size="sm" onClick={() => agregarManual(sec)}><Plus /> {esAjena ? "Pago a tercero" : "Línea manual"}</Button>
+                    </div>
+                  )}
 
                   {/* Líneas de esta sección */}
                   {propias.length > 0 && (
@@ -219,23 +278,29 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
                       {propias.map((l) => {
                         const idx = lineas.findIndex((x) => x._clave === l._clave);
                         const venta = ventaLinea(l, recargos);
+                        const editaPrecio = esAdmin || l.cuenta_ajena;
                         return (
-                          <div key={l._clave} className={cn("rounded-lg border bg-card p-3", l.pendiente && "border-ambar")}>
+                          <div key={l._clave} className={cn("rounded-lg border bg-card p-3", l.pendiente && !l.cuenta_ajena && "border-ambar", l.cuenta_ajena && "border-dashed bg-muted/30")}>
                             <div className="flex flex-wrap items-center gap-2">
-                              <Entrada value={l.nombre} placeholder="Descripción" autoFocus={!l.concepto_id && !l.nombre && !l.ruta}
+                              <Entrada value={l.nombre} placeholder="Descripción" autoFocus={!l.concepto_id && !l.nombre && !l.ruta} readOnly={!esAdmin && !!l.concepto_id}
                                 onChange={(e) => editar(l._clave, { nombre: e.target.value })} className="min-w-64 flex-1 font-medium" />
-                              {l.proveedor_nombre && <span className="rounded bg-muted px-2 py-0.5 text-xs">{l.proveedor_nombre}</span>}
+                              {l.proveedor_nombre && esAdmin && <span className="rounded bg-muted px-2 py-0.5 text-xs">{l.proveedor_nombre}</span>}
+                              {l.cuenta_ajena && <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900">Pago a tercero · aparte</span>}
                               <label className="flex items-center gap-1 text-xs text-muted-foreground">
                                 Cant.
-                                <Entrada type="number" step="0.001" min={0} value={l.cantidad} onChange={(e) => editar(l._clave, { cantidad: Number(e.target.value) })} className="w-20" />
+                                <Entrada type="number" step="0.001" min={0} value={l.cantidad} onChange={(e) => editar(l._clave, { cantidad: Number(e.target.value), cantidad_manual: true })} className="w-20" />
                                 {l.unidad && <span>{textoUnidad(l.unidad as Unidad).replace("por ", "")}</span>}
                               </label>
-                              <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Lleva ISR y no domiciliada">
-                                <Casilla checked={l.aplica_recargos} onChange={(e) => editar(l._clave, { aplica_recargos: e.target.checked })} /> Imp.
-                              </label>
-                              <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Lleva IVA (solo Q)">
-                                <Casilla checked={l.lleva_iva} onChange={(e) => editar(l._clave, { lleva_iva: e.target.checked })} /> IVA
-                              </label>
+                              {esAdmin && !l.cuenta_ajena && (
+                                <>
+                                  <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Lleva ISR y no domiciliada">
+                                    <Casilla checked={l.aplica_recargos} onChange={(e) => editar(l._clave, { aplica_recargos: e.target.checked })} /> Imp.
+                                  </label>
+                                  <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Lleva IVA (solo Q)">
+                                    <Casilla checked={l.lleva_iva} onChange={(e) => editar(l._clave, { lleva_iva: e.target.checked })} /> IVA
+                                  </label>
+                                </>
+                              )}
                               <span className="num ml-auto text-base font-semibold">{formatoMoneda(venta, l.moneda as Moneda)}</span>
                               <div className="flex">
                                 <Button variant="ghost" size="icon-xs" disabled={idx <= 0} onClick={() => mover(l._clave, -1)} title="Subir"><ArrowUp /></Button>
@@ -244,7 +309,20 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
                               </div>
                             </div>
                             <div className="mt-2">
-                              <ControlMargen linea={l} recargos={recargos} onChange={(c) => editar(l._clave, c)} compacto />
+                              {l.cuenta_ajena ? (
+                                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  Monto que paga el cliente al tercero ({l.moneda === "USD" ? "$" : "Q"} por unidad)
+                                  <Entrada type="number" step="0.01" min={0} value={l.valor_margen} className="h-7 w-28 text-xs"
+                                    onChange={(e) => editar(l._clave, { tipo_margen: "precio_fijo", valor_margen: Number(e.target.value), costo_unitario: 0 })} />
+                                  <span>Sin margen: no suma al total ni a la utilidad.</span>
+                                </label>
+                              ) : editaPrecio ? (
+                                <ControlMargen linea={l} recargos={recargos} onChange={(c) => editar(l._clave, c)} compacto />
+                              ) : (
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <Lock className="size-3" /> Precio unitario {formatoMoneda(ventaLinea({ ...l, cantidad: 1 }, recargos), l.moneda as Moneda)} · lo fija el administrador.
+                                </div>
+                              )}
                             </div>
                             <div className="mt-2 flex items-center gap-2">
                               <Entrada value={l.nota ?? ""} placeholder="Nota opcional (ej. precio nocturno, vía Hong Kong, tránsito 30–35 días)"
@@ -252,7 +330,7 @@ export function Servicios({ servicio, lineas, catalogo, onChange, medidas, marge
                               <label className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
                                 <Casilla checked={l.nota_visible} onChange={(e) => editar(l._clave, { nota_visible: e.target.checked })} /> Sale en el PDF
                               </label>
-                              {l.categoria !== info.categoria && (
+                              {esAdmin && l.categoria !== info.categoria && !l.cuenta_ajena && (
                                 <Selector value={l.categoria} onChange={(e) => editar(l._clave, { categoria: e.target.value as Categoria })} className="h-7 w-40 text-xs">
                                   <option value="internacional">Bloque: Flete internacional</option>
                                   <option value="local">Bloque: Gastos locales</option>

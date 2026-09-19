@@ -5,27 +5,42 @@ import { leerConfig, type TextosLegales } from "@/lib/config";
 import type { DescuentoForm } from "@/lib/cotizaciones/esquema";
 import { datosEditor, estadoEfectivo, obtenerCotizacion } from "@/lib/cotizaciones/consultas";
 import { catalogoParaCotizar } from "@/lib/tarifas/consultas";
+import { sesionRequerida } from "@/lib/sesion";
 
 type DescuentoGuardado = Omit<DescuentoForm, "_clave">;
 
 export default async function PaginaCotizacion(props: PageProps<"/cotizaciones/[id]">) {
   const { id } = await props.params;
-  const [config, { clientes }, datos, catalogo] = await Promise.all([leerConfig(), datosEditor(), obtenerCotizacion(id), catalogoParaCotizar()]);
+  const sesion = await sesionRequerida();
+  const config = await leerConfig();
+  const [{ clientes }, datos, catalogo] = await Promise.all([
+    datosEditor(),
+    obtenerCotizacion(id, { ocultarCostos: !sesion.esAdmin }),
+    catalogoParaCotizar({ ocultarCostos: !sesion.esAdmin, recargos: config.recargos }),
+  ]);
   if (!datos) notFound();
   const { cotizacion: c, lineas } = datos;
+  // Misma regla siempre: el admin edita cualquiera; el usuario normal solo las suyas.
+  const puedeEditar = sesion.esAdmin || c.creado_por === sesion.userId;
 
   return (
     <div className="space-y-4">
-      <AccionesCotizacion id={c.id} numero={c.numero} estado={c.estado} estadoEfectivo={estadoEfectivo(c)} />
+      <AccionesCotizacion id={c.id} numero={c.numero} estado={c.estado} estadoEfectivo={estadoEfectivo(c)} puedeEditar={puedeEditar} />
       <EditorCotizacion
         key={c.updated_at}
         id={c.id}
         numero={c.numero}
+        esAdmin={sesion.esAdmin}
+        puedeEditar={puedeEditar}
         cabecera={{
           tipo_servicio: c.tipo_servicio,
+          tipos_servicio: c.tipos_servicio?.length ? c.tipos_servicio : [c.tipo_servicio],
           cliente_id: c.cliente_id,
           cliente_nombre: c.cliente_nombre,
           contacto: c.contacto ?? "",
+          cliente_telefono: c.cliente_telefono ?? "",
+          segmento_courier: c.segmento_courier,
+          valor_mercaderia: c.valor_mercaderia ?? "",
           fecha: c.fecha,
           dias_vigencia: c.dias_vigencia,
           tipo_carga: c.tipo_carga ?? "",
@@ -48,6 +63,7 @@ export default async function PaginaCotizacion(props: PageProps<"/cotizaciones/[
         lineas={lineas.map((l) => ({
           _clave: l.id,
           concepto_id: l.concepto_id,
+          ruta_id: l.ruta_id,
           nombre: l.nombre,
           categoria: l.categoria,
           moneda: l.moneda,
@@ -57,6 +73,7 @@ export default async function PaginaCotizacion(props: PageProps<"/cotizaciones/[
           valor_margen: Number(l.valor_margen),
           lleva_iva: l.lleva_iva,
           aplica_recargos: l.aplica_recargos,
+          cuenta_ajena: l.cuenta_ajena,
           nota: l.nota,
           nota_visible: l.nota_visible,
           proveedor_nombre: l.proveedor_nombre,

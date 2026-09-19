@@ -15,7 +15,7 @@ type Enums = {
 type ClienteRow = {
   id: string; nombre: string; nit: string | null; contacto_nombre: string | null;
   contacto_email: string | null; contacto_telefono: string | null; notas: string | null;
-  activo: boolean; created_at: string;
+  activo: boolean; created_at: string; empresa: string | null;
 };
 type ConceptoRow = {
   id: string; proveedor_id: string | null; nombre: string; categoria: Enums["categoria_concepto"];
@@ -24,6 +24,7 @@ type ConceptoRow = {
   created_at: string; updated_at: string;
   seccion: string; tarifario_id: string | null; aplica_recargos: boolean; minimo: number | null;
   rango_desde: number | null; rango_hasta: number | null; pendiente: boolean; archivado_at: string | null;
+  cuenta_ajena: boolean;
 };
 type TarifarioRow = {
   id: string; nombre: string; proveedor_id: string | null; servicio: Enums["tipo_servicio"] | null; seccion: string;
@@ -49,6 +50,7 @@ type LineaRow = {
   tipo_margen: Enums["tipo_margen"]; valor_margen: number; lleva_iva: boolean; venta_total: number;
   venta_bruta: number; orden: number;
   aplica_recargos: boolean; nota: string | null; nota_visible: boolean; proveedor_nombre: string | null; ruta: string | null;
+  cuenta_ajena: boolean; ruta_id: string | null;
 };
 type CotizacionRow = {
   id: string; numero: string; cliente_id: string | null; cliente_nombre: string; contacto: string | null;
@@ -59,11 +61,18 @@ type CotizacionRow = {
   total_gtq: number; costo_total_gtq: number; utilidad_gtq: number; margen_pct: number;
   notas_internas: string | null; created_at: string; updated_at: string;
   incoterm: string | null; descuentos: Json; notas: Json | null; creado_por: string | null;
-  tipo_servicio: Enums["tipo_servicio"];
+  tipo_servicio: Enums["tipo_servicio"]; tipos_servicio: Enums["tipo_servicio"][];
+  cliente_telefono: string | null; segmento_courier: SegmentoCourier | null; valor_mercaderia: number | null;
 };
+export type SegmentoCourier = "ticket" | "consolidado" | "documentos";
+export type Rol = "admin" | "usuario";
 type PerfilRow = {
   user_id: string; nombre: string; cargo: string; correo: string; telefono: string;
-  created_at: string; updated_at: string;
+  created_at: string; updated_at: string; rol: Rol; activo: boolean; email: string;
+};
+type InvitacionRow = {
+  id: string; codigo: string; nota: string; usos_max: number; usos: number; vence_at: string | null;
+  activo: boolean; creado_por: string | null; usado_por: Json; created_at: string;
 };
 type ProveedorRow = {
   id: string; nombre: string; tipo: Enums["tipo_proveedor"]; pais: string | null;
@@ -89,6 +98,7 @@ export type Database = {
       cotizaciones: Tabla<CotizacionRow, "numero" | "cliente_nombre" | "tipo_cambio">;
       proveedores: Tabla<ProveedorRow, "nombre">;
       perfiles: Tabla<PerfilRow, "user_id">;
+      invitaciones: Tabla<InvitacionRow, "codigo">;
       tarifarios: Tabla<TarifarioRow, "nombre" | "seccion">;
       tarifas_ruta: Tabla<TarifaRutaRow, "tarifario_id" | "origen">;
       tarifas_cliente: Tabla<TarifaClienteRow, "cliente_id" | "concepto_id" | "tipo_margen" | "valor_margen">;
@@ -97,6 +107,12 @@ export type Database = {
     Functions: {
       siguiente_numero_cotizacion: { Args: Record<string, never>; Returns: string };
       guardar_cotizacion: { Args: { p_id: string | null; p_cabecera: Json; p_lineas: Json }; Returns: string };
+      es_admin: { Args: Record<string, never>; Returns: boolean };
+      regenerar_clave_admin: { Args: Record<string, never>; Returns: string };
+      canjear_clave_admin: { Args: { p_clave: string }; Returns: boolean };
+      cambiar_rol_usuario: { Args: { p_user: string; p_rol: string; p_activo: boolean }; Returns: undefined };
+      generar_codigo_invitacion: { Args: Record<string, never>; Returns: string };
+      validar_invitacion: { Args: { p_codigo: string }; Returns: boolean };
     };
     Enums: Enums;
     CompositeTypes: { [_ in never]: never };
@@ -117,3 +133,4 @@ export type Tarifario = Tables<"tarifarios">;
 export type TarifaRuta = Tables<"tarifas_ruta">;
 export type TarifaCliente = Tables<"tarifas_cliente">;
 export type TipoServicio = Enums["tipo_servicio"];
+export type Invitacion = Tables<"invitaciones">;

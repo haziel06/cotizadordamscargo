@@ -1,3 +1,4 @@
+import { adminRequerido } from "@/lib/sesion";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -8,6 +9,7 @@ import { TablaRutas } from "@/components/tarifas/TablaRutas";
 import { TablaConceptos } from "@/components/tarifas/TablaConceptos";
 
 export default async function PaginaTarifario(props: PageProps<"/tarifas/[id]">) {
+  await adminRequerido();
   const { id } = await props.params;
   const [datos, config] = await Promise.all([obtenerTarifario(id), leerConfig()]);
   if (!datos) notFound();

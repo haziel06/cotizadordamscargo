@@ -45,7 +45,7 @@ describe("totalesCotizacion — bordes", () => {
   it("sin líneas todo 0", () => {
     expect(totalesCotizacion([], 8.05)).toEqual({
       internacional_usd: 0, local_gtq: 0, naviera_usd: 0, total_gtq: 0,
-      costo_total_gtq: 0, venta_total_gtq: 0, utilidad_gtq: 0, margen_pct: 0, descuento_total_gtq: 0,
+      costo_total_gtq: 0, venta_total_gtq: 0, utilidad_gtq: 0, margen_pct: 0, descuento_total_gtq: 0, ajenos_usd: 0, ajenos_gtq: 0,
     });
   });
   it("naviera se suma al total en Q; depósito sin IVA no se divide", () => {

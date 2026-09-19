@@ -1,8 +1,10 @@
 "use client";
 import { useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { Campo, Entrada, Selector } from "@/components/Campos";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { INCOTERMS, type DefServicio } from "@/lib/etiquetas";
+import { INCOTERMS, LIMITE_TICKET_USD, SEGMENTOS_COURIER, type CampoCarga, type DefServicio } from "@/lib/etiquetas";
+import { SOBREPESO_KG } from "@/lib/calculo/tipos";
 import type { CabeceraForm } from "@/lib/cotizaciones/esquema";
 import type { Cliente } from "@/lib/supabase/tipos";
 import type { GanadorPeso } from "@/lib/calculo/peso";
@@ -17,24 +19,50 @@ interface Props {
 }
 
 const LB_POR_KG = 2.20462;
+const aLb = (kg: number) => Math.round(kg * LB_POR_KG * 100) / 100;
+const aKg = (lb: number) => Math.round((lb / LB_POR_KG) * 10000) / 10000;
 
 export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: Props) {
-  const muestra = (campo: DefServicio["campos"][number]) => servicio.campos.includes(campo);
+  const muestra = (campo: CampoCarga) => servicio.campos.includes(campo);
   const kg = Number(c.kilogramos) || 0;
   const [sugerencias, setSugerencias] = useState<Cliente[]>([]);
+  const esCourier = c.tipos_servicio.includes("courier");
+
+  // Las libras se escriben libremente y se convierten a kg al vuelo. Se guarda el texto tal cual
+  // se teclea para que "1", "1." o "12" no reboten por el redondeo (antes 1 lb → 0.45 kg → 0.99 lb).
+  const [libras, setLibras] = useState(() => (kg ? String(aLb(kg)) : ""));
+  const [kgVisto, setKgVisto] = useState(kg);
+  if (kg !== kgVisto) {
+    // Cambió el kg desde otro lado (campo de kilogramos): sincroniza el texto de libras sin efecto.
+    setKgVisto(kg);
+    const desdeKg = kg ? aLb(kg) : 0;
+    if (Math.abs(desdeKg - (Number(libras) || 0)) > 0.011) setLibras(kg ? String(desdeKg) : "");
+  }
+  const cambiarLibras = (texto: string) => {
+    setLibras(texto);
+    const lb = Number(texto);
+    onChange({ kilogramos: texto.trim() === "" || Number.isNaN(lb) ? "" : aKg(lb) });
+  };
 
   const buscarCliente = (texto: string) => {
     onChange({ cliente_nombre: texto, cliente_id: null });
     const q = texto.trim().toLowerCase();
-    setSugerencias(q.length >= 2 ? clientes.filter((k) => k.nombre.toLowerCase().includes(q)).slice(0, 6) : []);
+    setSugerencias(q.length >= 2 ? clientes.filter((k) => `${k.nombre} ${k.empresa ?? ""} ${k.contacto_nombre ?? ""}`.toLowerCase().includes(q)).slice(0, 6) : []);
   };
   const elegirCliente = (k: Cliente) => {
-    onChange({ cliente_nombre: k.nombre, cliente_id: k.id, contacto: c.contacto || k.contacto_nombre || "" });
+    onChange({
+      cliente_nombre: k.empresa || k.nombre,
+      cliente_id: k.id,
+      contacto: c.contacto || k.contacto_nombre || (k.empresa ? k.nombre : "") || "",
+      cliente_telefono: c.cliente_telefono || k.contacto_telefono || "",
+    });
     setSugerencias([]);
   };
 
   const tc = Number(c.tipo_cambio);
   const tcFuera = !(tc >= 7.5 && tc <= 8.5);
+  const sobrepeso = kg > SOBREPESO_KG;
+  const valorMerc = Number(c.valor_mercaderia) || 0;
   const textoPeso =
     peso.gano === "real" ? "Se cobra el peso real" : peso.gano === "volumetrico" ? "Se cobra el peso volumétrico" : "Peso real y volumétrico iguales";
 
@@ -44,7 +72,7 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
         <CardTitle>Cliente y carga</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-12">
-        <Campo etiqueta="Cliente (consignatario)" className="relative md:col-span-5">
+        <Campo etiqueta="Empresa / cliente (sale en el PDF)" className="relative md:col-span-4">
           <Entrada
             value={c.cliente_nombre}
             onChange={(e) => buscarCliente(e.target.value)}
@@ -62,8 +90,8 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => elegirCliente(k)}
                   >
-                    {k.nombre}
-                    {k.contacto_nombre && <span className="ml-2 text-xs text-muted-foreground">{k.contacto_nombre}</span>}
+                    {k.empresa || k.nombre}
+                    {(k.contacto_nombre || (k.empresa && k.nombre)) && <span className="ml-2 text-xs text-muted-foreground">{k.contacto_nombre || k.nombre}</span>}
                   </button>
                 </li>
               ))}
@@ -71,15 +99,46 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
           )}
           {c.cliente_id && <span className="text-xs text-verde">Cliente registrado</span>}
         </Campo>
-        <Campo etiqueta="Contacto" className="md:col-span-3">
-          <Entrada value={c.contacto ?? ""} onChange={(e) => onChange({ contacto: e.target.value })} />
+        <Campo etiqueta="Nombre de contacto" className="md:col-span-3">
+          <Entrada value={c.contacto ?? ""} onChange={(e) => onChange({ contacto: e.target.value })} placeholder="Persona que solicita" autoComplete="off" />
+        </Campo>
+        <Campo etiqueta="Teléfono" className="md:col-span-2">
+          <Entrada value={c.cliente_telefono ?? ""} onChange={(e) => onChange({ cliente_telefono: e.target.value })} placeholder="5555-5555" autoComplete="off" />
         </Campo>
         <Campo etiqueta="Fecha" className="md:col-span-2">
           <Entrada type="date" value={c.fecha} onChange={(e) => onChange({ fecha: e.target.value })} />
         </Campo>
-        <Campo etiqueta="Vigencia (días)" className="md:col-span-2">
+        <Campo etiqueta="Vigencia (días)" className="md:col-span-1">
           <Entrada type="number" min={1} value={c.dias_vigencia} onChange={(e) => onChange({ dias_vigencia: e.target.value })} />
         </Campo>
+
+        {esCourier && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 md:col-span-12">
+            <div className="mb-2 text-xs font-medium text-muted-foreground">Segmento de courier</div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {SEGMENTOS_COURIER.map((s) => {
+                const on = c.segmento_courier === s.valor;
+                return (
+                  <button
+                    key={s.valor}
+                    type="button"
+                    onClick={() => onChange({ segmento_courier: s.valor })}
+                    className={cn("rounded-md border bg-white p-2.5 text-left transition-colors hover:border-primary", on && "border-primary ring-2 ring-primary/30")}
+                  >
+                    <div className={cn("text-sm font-semibold", on ? "text-primary" : "text-foreground")}>{s.texto}</div>
+                    <div className="text-[11px] leading-snug text-muted-foreground">{s.descripcion}</div>
+                  </button>
+                );
+              })}
+            </div>
+            {c.segmento_courier === "consolidado" && valorMerc > LIMITE_TICKET_USD && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-amber-800">
+                <AlertTriangle className="size-3.5" /> La mercadería supera ${LIMITE_TICKET_USD.toLocaleString("en-US")}: normalmente se cotiza como <strong>Ticket</strong>.
+                <button type="button" className="underline" onClick={() => onChange({ segmento_courier: "ticket" })}>Cambiar a Ticket</button>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className={cn("rounded-lg border-2 p-3 md:col-span-3 md:row-span-2", tcFuera ? "border-ambar bg-ambar/10" : "border-primary/30 bg-primary/5")}>
           <div className="text-xs font-medium text-muted-foreground">Tipo de cambio (Q por USD)</div>
@@ -128,25 +187,30 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
             <Entrada type="number" min={0} value={c.bultos ?? ""} onChange={(e) => onChange({ bultos: e.target.value })} />
           </Campo>
         )}
-        {muestra("kg") && (
-          <Campo etiqueta="Kilogramos" className="md:col-span-2">
-            <Entrada type="number" step="0.01" min={0} value={c.kilogramos ?? ""} onChange={(e) => onChange({ kilogramos: e.target.value })} />
-          </Campo>
-        )}
         {muestra("libras") && (
           <Campo etiqueta="Libras" className="md:col-span-2">
-            <Entrada type="number" step="0.01" min={0} value={kg ? Math.round(kg * LB_POR_KG * 100) / 100 : ""}
-              onChange={(e) => onChange({ kilogramos: e.target.value === "" ? "" : Math.round((Number(e.target.value) / LB_POR_KG) * 100) / 100 })} />
+            <Entrada type="number" step="any" min={0} inputMode="decimal" value={libras} onChange={(e) => cambiarLibras(e.target.value)} className="font-semibold" />
+          </Campo>
+        )}
+        {muestra("kg") && (
+          <Campo etiqueta="Kilogramos" className="md:col-span-2">
+            <Entrada type="number" step="any" min={0} inputMode="decimal" value={c.kilogramos ?? ""} onChange={(e) => onChange({ kilogramos: e.target.value })}
+              className={cn(sobrepeso && "border-red-400 bg-red-50")} />
           </Campo>
         )}
         {muestra("kg_volumetricos") && (
           <Campo etiqueta="Kg volumétricos" className="md:col-span-2">
-            <Entrada type="number" step="0.01" min={0} value={c.kg_volumetricos ?? ""} onChange={(e) => onChange({ kg_volumetricos: e.target.value })} />
+            <Entrada type="number" step="any" min={0} value={c.kg_volumetricos ?? ""} onChange={(e) => onChange({ kg_volumetricos: e.target.value })} />
           </Campo>
         )}
         {muestra("cbm") && (
           <Campo etiqueta="CBM" className="md:col-span-2">
-            <Entrada type="number" step="0.001" min={0} value={c.cbm ?? ""} onChange={(e) => onChange({ cbm: e.target.value })} />
+            <Entrada type="number" step="any" min={0} value={c.cbm ?? ""} onChange={(e) => onChange({ cbm: e.target.value })} />
+          </Campo>
+        )}
+        {muestra("valor_mercaderia") && (
+          <Campo etiqueta="Valor mercadería (USD)" className="md:col-span-2">
+            <Entrada type="number" step="any" min={0} value={c.valor_mercaderia ?? ""} onChange={(e) => onChange({ valor_mercaderia: e.target.value })} placeholder="Factura" />
           </Campo>
         )}
         {muestra("medidas") && (
@@ -154,10 +218,19 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
             <Entrada value={c.medidas ?? ""} onChange={(e) => onChange({ medidas: e.target.value })} placeholder="120 × 80 × 100 cm" />
           </Campo>
         )}
-        {peso.peso > 0 && (
-          <div className="text-xs text-muted-foreground md:col-span-12">
-            {textoPeso}: <strong className="num">{peso.peso.toLocaleString("en-US")} kg</strong>
-            {muestra("libras") && <> · <strong className="num">{(peso.peso * LB_POR_KG).toLocaleString("en-US", { maximumFractionDigits: 1 })} lb</strong></>}
+        {(peso.peso > 0 || sobrepeso) && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground md:col-span-12">
+            {peso.peso > 0 && (
+              <span>
+                {textoPeso}: <strong className="num">{peso.peso.toLocaleString("en-US")} kg</strong>
+                {muestra("libras") && <> · <strong className="num">{aLb(peso.peso).toLocaleString("en-US", { maximumFractionDigits: 1 })} lb</strong></>}
+              </span>
+            )}
+            {sobrepeso && (
+              <span className="inline-flex items-center gap-1 rounded bg-red-100 px-2 py-0.5 font-medium text-red-900">
+                <AlertTriangle className="size-3" /> Sobrepeso: más de {SOBREPESO_KG.toLocaleString("en-US")} kg
+              </span>
+            )}
           </div>
         )}
         <Campo etiqueta="Mercadería" className="md:col-span-8">

@@ -1,8 +1,10 @@
+import { adminRequerido } from "@/lib/sesion";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { listarTarifarios } from "@/lib/tarifas/consultas";
 import { ListaTarifarios } from "@/components/tarifas/ListaTarifarios";
 
 export default async function PaginaTarifas(props: PageProps<"/tarifas">) {
+  await adminRequerido();
   const sp = await props.searchParams;
   const archivados = sp.archivados === "1";
   const supabase = await crearClienteServidor();

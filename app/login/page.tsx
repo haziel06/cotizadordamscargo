@@ -1,15 +1,11 @@
+import { PantallaAuth } from "@/components/auth/PantallaAuth";
 import { FormularioLogin } from "./FormularioLogin";
 
-export default function PaginaLogin() {
+export default async function PaginaLogin(props: PageProps<"/login">) {
+  const sp = await props.searchParams;
   return (
-    <main className="flex flex-1 items-center justify-center p-6">
-      <div className="w-full max-w-sm rounded-lg border bg-card p-8 shadow-sm">
-        <div className="mb-6 text-center">
-          <div className="text-2xl font-bold text-primary">Dams Cargo</div>
-          <div className="text-sm text-muted-foreground">Cotizador · Aduanas &amp; Logística</div>
-        </div>
-        <FormularioLogin />
-      </div>
-    </main>
+    <PantallaAuth titulo="Iniciar sesión" subtitulo="Entra con tu correo y contraseña.">
+      <FormularioLogin inactivo={sp.inactivo === "1"} />
+    </PantallaAuth>
   );
 }

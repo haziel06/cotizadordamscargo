@@ -1,6 +1,6 @@
-import type { LineaCalculo } from "./tipos";
+import { SOBREPESO_KG, type LineaCalculo } from "./tipos";
 
-export type TipoAlerta = "margen_bajo" | "tipo_cambio" | "linea_cero";
+export type TipoAlerta = "margen_bajo" | "tipo_cambio" | "linea_cero" | "sobrepeso";
 export interface Alerta {
   tipo: TipoAlerta;
   mensaje: string;
@@ -11,9 +11,12 @@ export const TIPO_CAMBIO_MIN = 7.5;
 export const TIPO_CAMBIO_MAX = 8.5;
 
 /** Alertas no bloqueantes de la spec §7.4. */
-export function alertasCotizacion(p: { margen_pct: number; tipo_cambio: number; lineas: LineaCalculo[] }): Alerta[] {
+export function alertasCotizacion(p: { margen_pct: number; tipo_cambio: number; lineas: LineaCalculo[]; kilogramos?: number | null }): Alerta[] {
   const alertas: Alerta[] = [];
 
+  if ((p.kilogramos ?? 0) > SOBREPESO_KG) {
+    alertas.push({ tipo: "sobrepeso", mensaje: `Sobrepeso: la carga supera los ${SOBREPESO_KG.toLocaleString("en-US")} kg (puede llevar costo extra)` });
+  }
   if (p.lineas.length > 0 && p.margen_pct < MARGEN_MINIMO_PCT) {
     alertas.push({ tipo: "margen_bajo", mensaje: "Margen bajo comparado con el histórico" });
   }

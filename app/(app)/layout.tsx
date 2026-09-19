@@ -1,32 +1,13 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { usuarioRequerido } from "@/lib/supabase/server";
+import { sesionRequerida } from "@/lib/sesion";
 import { cerrarSesion } from "@/app/login/acciones";
-import { Button } from "@/components/ui/button";
-import { NavLinks } from "@/components/NavLinks";
+import { BarraLateral } from "@/components/BarraLateral";
 
 export default async function LayoutApp({ children }: LayoutProps<"/">) {
-  const { usuario } = await usuarioRequerido();
-  if (!usuario) redirect("/login");
-
+  const sesion = await sesionRequerida();
   return (
-    <>
-      <header className="sticky top-0 z-30 border-b bg-primary text-primary-foreground">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4">
-          <Link href="/" className="flex items-baseline gap-2 font-semibold">
-            <span className="text-lg">Dams Cargo</span>
-            <span className="text-xs font-normal opacity-80">Cotizador</span>
-          </Link>
-          <NavLinks />
-          <div className="ml-auto flex items-center gap-3 text-sm">
-            <span className="hidden opacity-80 sm:inline">{usuario.email}</span>
-            <form action={cerrarSesion}>
-              <Button type="submit" variant="secondary" size="sm">Salir</Button>
-            </form>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">{children}</main>
-    </>
+    <div className="min-h-screen bg-muted/30">
+      <BarraLateral nombre={sesion.nombre} email={sesion.email} esAdmin={sesion.esAdmin} cerrarSesion={cerrarSesion} />
+      <main className="min-w-0 px-4 py-6 lg:ml-64 lg:px-8">{children}</main>
+    </div>
   );
 }

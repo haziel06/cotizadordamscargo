@@ -1,11 +1,12 @@
 "use client";
 import { useActionState } from "react";
+import Link from "next/link";
 import { iniciarSesion } from "./acciones";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function FormularioLogin() {
+export function FormularioLogin({ inactivo }: { inactivo?: boolean }) {
   const [estado, accion, pendiente] = useActionState(iniciarSesion, undefined);
   return (
     <form action={accion} className="space-y-4">
@@ -17,10 +18,14 @@ export function FormularioLogin() {
         <Label htmlFor="clave">Contraseña</Label>
         <Input id="clave" name="clave" type="password" autoComplete="current-password" required />
       </div>
+      {inactivo && <p className="text-sm text-destructive">Tu cuenta está desactivada. Habla con el administrador.</p>}
       {estado?.error && <p className="text-sm text-destructive">{estado.error}</p>}
-      <Button type="submit" className="w-full" disabled={pendiente}>
+      <Button type="submit" className="w-full" size="lg" disabled={pendiente}>
         {pendiente ? "Entrando…" : "Entrar"}
       </Button>
+      <p className="text-center text-sm text-muted-foreground">
+        ¿Tienes un código de invitación? <Link href="/registro" className="font-medium text-primary underline">Crear cuenta</Link>
+      </p>
     </form>
   );
 }

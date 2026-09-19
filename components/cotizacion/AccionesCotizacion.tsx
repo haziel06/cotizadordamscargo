@@ -16,9 +16,11 @@ interface Props {
   numero: string;
   estado: Estado;
   estadoEfectivo: Estado;
+  /** Admin o dueño de la cotización. Los demás solo pueden ver, descargar el PDF y duplicar. */
+  puedeEditar: boolean;
 }
 
-export function AccionesCotizacion({ id, numero, estado, estadoEfectivo }: Props) {
+export function AccionesCotizacion({ id, numero, estado, estadoEfectivo, puedeEditar }: Props) {
   const router = useRouter();
   const [pendiente, startTransition] = useTransition();
   const info = infoEstado(estadoEfectivo);
@@ -42,7 +44,8 @@ export function AccionesCotizacion({ id, numero, estado, estadoEfectivo }: Props
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-2">
       <span className={cn("rounded px-2 py-0.5 text-xs font-medium", info.clase)}>{info.texto}</span>
-      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      {!puedeEditar && <span className="text-xs text-muted-foreground">Solo lectura: la creó otra persona.</span>}
+      {puedeEditar && <label className="flex items-center gap-2 text-sm text-muted-foreground">
         Cambiar a
         <Selector
           value={estado}
@@ -59,7 +62,7 @@ export function AccionesCotizacion({ id, numero, estado, estadoEfectivo }: Props
             <option key={e.valor} value={e.valor}>{e.texto}</option>
           ))}
         </Selector>
-      </label>
+      </label>}
       <div className="ml-auto flex gap-2">
         <Button variant="outline" size="sm" nativeButton={false} render={<a href={`/api/cotizaciones/${id}/pdf`} />}>
           <FileDown /> Descargar PDF
@@ -67,9 +70,11 @@ export function AccionesCotizacion({ id, numero, estado, estadoEfectivo }: Props
         <Button variant="outline" size="sm" disabled={pendiente} onClick={duplicar}>
           <Copy /> Duplicar
         </Button>
-        <Button variant="ghost" size="sm" disabled={pendiente} className="text-destructive" onClick={borrar}>
-          <Trash2 /> Borrar
-        </Button>
+        {puedeEditar && (
+          <Button variant="ghost" size="sm" disabled={pendiente} className="text-destructive" onClick={borrar}>
+            <Trash2 /> Borrar
+          </Button>
+        )}
       </div>
     </div>
   );

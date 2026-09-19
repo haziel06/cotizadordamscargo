@@ -10,10 +10,13 @@ interface Props {
   alertas: Alerta[];
   tipoCambio: number;
   recargos: Recargos;
+  /** Solo el admin ve costo, utilidad y margen. */
+  esAdmin: boolean;
 }
 
-export function ResumenVivo({ totales: t, alertas, tipoCambio, recargos }: Props) {
+export function ResumenVivo({ totales: t, alertas, tipoCambio, recargos, esAdmin }: Props) {
   const margenBajo = alertas.some((a) => a.tipo === "margen_bajo");
+  const visibles = esAdmin ? alertas : alertas.filter((a) => a.tipo !== "margen_bajo" && a.tipo !== "linea_cero");
   return (
     <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
       <div className="rounded-lg border bg-card p-4">
@@ -26,10 +29,17 @@ export function ResumenVivo({ totales: t, alertas, tipoCambio, recargos }: Props
             <Fila etiqueta="Total general" valor={formatoMoneda(t.total_gtq, "GTQ")} grande />
             <div className="text-right text-xs text-muted-foreground">al tipo de cambio {tipoCambio.toFixed(2)}</div>
           </div>
+          {(t.ajenos_gtq > 0 || t.ajenos_usd > 0) && (
+            <div className="border-t pt-2">
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Pagos a terceros (aparte)</div>
+              {t.ajenos_usd > 0 && <Fila etiqueta="En dólares" valor={formatoMoneda(t.ajenos_usd, "USD")} />}
+              {t.ajenos_gtq > 0 && <Fila etiqueta="En quetzales" valor={formatoMoneda(t.ajenos_gtq, "GTQ")} />}
+            </div>
+          )}
         </dl>
       </div>
 
-      <div className="rounded-lg border-2 border-dashed border-ambar bg-ambar/10 p-4">
+      {esAdmin && <div className="rounded-lg border-2 border-dashed border-ambar bg-ambar/10 p-4">
         <div className="mb-1 flex items-center gap-2 font-semibold text-amber-900">
           <EyeOff className="size-4" /> INTERNO
         </div>
@@ -46,11 +56,11 @@ export function ResumenVivo({ totales: t, alertas, tipoCambio, recargos }: Props
         <p className="mt-3 text-[11px] text-amber-900/70">
           Líneas con «Imp.» llevan ISR {recargos.isr_pct}% + no domiciliada {recargos.no_domiciliada_pct}% sobre el costo antes del margen.
         </p>
-      </div>
+      </div>}
 
-      {alertas.length > 0 && (
+      {visibles.length > 0 && (
         <ul className="space-y-2">
-          {alertas.map((a, i) => (
+          {visibles.map((a, i) => (
             <li key={i} className="flex items-start gap-2 rounded border border-ambar bg-ambar/10 px-3 py-2 text-xs text-amber-900">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> {a.mensaje}
             </li>

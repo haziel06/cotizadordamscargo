@@ -22,6 +22,8 @@ export const esquemaLinea = z.object({
   nota_visible: z.boolean().default(true),
   proveedor_nombre: textoOpcional.default(null),
   ruta: textoOpcional.default(null),
+  cuenta_ajena: z.boolean().default(false),
+  ruta_id: z.string().uuid().nullable().default(null),
 });
 export type LineaEditable = z.infer<typeof esquemaLinea> & {
   _clave: string;
@@ -31,6 +33,8 @@ export type LineaEditable = z.infer<typeof esquemaLinea> & {
   pendiente?: boolean;
   /** Sección de la base de tarifas donde se muestra en el editor. */
   seccion?: string;
+  /** true cuando alguien escribió la cantidad a mano: deja de seguir al peso/volumen de la carga. */
+  cantidad_manual?: boolean;
 };
 
 export const esquemaDescuento = z.object({
@@ -46,11 +50,18 @@ export const esquemaNotas = z.object({
   cuenta_cliente: z.array(z.string()),
 });
 
+const tipoServicio = z.enum(["maritimo_fcl", "maritimo_lcl", "aereo", "courier", "terrestre", "aduanas"]);
 export const esquemaCabecera = z.object({
-  tipo_servicio: z.enum(["maritimo_fcl", "maritimo_lcl", "aereo", "courier", "terrestre", "aduanas"]).default("maritimo_fcl"),
+  tipo_servicio: tipoServicio.default("maritimo_fcl"),
+  /** Una cotización puede combinar varios servicios; el primero es el principal. */
+  tipos_servicio: z.array(tipoServicio).min(1, "Elige al menos un servicio"),
   cliente_id: z.string().uuid().nullable(),
-  cliente_nombre: z.string().trim().min(1, "Escribe el nombre del cliente"),
+  /** Empresa: es lo que sale como "Cliente" en el PDF. */
+  cliente_nombre: z.string().trim().min(1, "Escribe el nombre de la empresa o cliente"),
   contacto: textoOpcional,
+  cliente_telefono: textoOpcional,
+  segmento_courier: z.enum(["ticket", "consolidado", "documentos"]).nullable().default(null),
+  valor_mercaderia: numOpcional,
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
   dias_vigencia: z.coerce.number().int().min(1).max(365),
   tipo_carga: textoOpcional,
@@ -75,9 +86,13 @@ export type Cabecera = z.infer<typeof esquemaCabecera>;
 /** Lo que maneja el formulario: campos numéricos como string o number, vacíos permitidos. */
 export interface CabeceraForm {
   tipo_servicio: "maritimo_fcl" | "maritimo_lcl" | "aereo" | "courier" | "terrestre" | "aduanas";
+  tipos_servicio: ("maritimo_fcl" | "maritimo_lcl" | "aereo" | "courier" | "terrestre" | "aduanas")[];
   cliente_id: string | null;
   cliente_nombre: string;
   contacto: string;
+  cliente_telefono: string;
+  segmento_courier: "ticket" | "consolidado" | "documentos" | null;
+  valor_mercaderia: number | string;
   fecha: string;
   dias_vigencia: number | string;
   tipo_carga: string;

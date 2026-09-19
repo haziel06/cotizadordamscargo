@@ -127,11 +127,12 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
   const textos: TextosLegales = (c.notas as TextosLegales | null) ?? config.textos_legales;
   const vence = fechaVencimiento(c.fecha, c.dias_vigencia);
   const hayFirma = Boolean(perfil.nombre || perfil.correo || perfil.telefono);
+  const ajenas = lineas.filter((l) => l.cuenta_ajena);
 
   const datosIzq: [string, string | null][] = [
     ["Fecha", formatoFecha(c.fecha)],
-    ["Consignatario", c.cliente_nombre],
-    ["Contacto", c.contacto],
+    ["Cliente", c.cliente_nombre],
+    ["Atención", [c.contacto, c.cliente_telefono ? `Tel. ${c.cliente_telefono}` : null].filter(Boolean).join(" · ") || null],
     ["Carga", c.tipo_carga],
     ["Kilogramos", num(c.kilogramos)],
     ["Kg volumétricos", num(c.kg_volumetricos)],
@@ -223,9 +224,11 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
         <Text style={s.vigencia}>Válido al {formatoFecha(vence)}</Text>
 
         {BLOQUES.map((b) => {
-          const propias = lineas.filter((l) => l.categoria === b.categoria);
+          const propias = lineas.filter((l) => l.categoria === b.categoria && !l.cuenta_ajena);
           if (propias.length === 0) return null;
-          const total = redondear(propias.reduce((acc, l) => acc + Number(l.venta_total), 0));
+          const tc = Number(c.tipo_cambio) || 1;
+          const enBloque = (l: CotizacionLinea) => (l.moneda === b.moneda ? Number(l.venta_total) : b.moneda === "GTQ" ? Number(l.venta_total) * tc : Number(l.venta_total) / tc);
+          const total = redondear(propias.reduce((acc, l) => acc + enBloque(l), 0));
           return (
             <View key={b.categoria} style={s.seccion} wrap={false}>
               <View style={s.seccionCabecera}>
@@ -238,7 +241,7 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
                     <Text>{l.nombre}{Number(l.cantidad) !== 1 ? `  (${num(l.cantidad)})` : ""}</Text>
                     {l.nota && l.nota_visible ? <Text style={s.lineaNota}>{l.nota}</Text> : null}
                   </View>
-                  <Text style={s.monto}>{formatoMoneda(Number(l.venta_total), b.moneda)}</Text>
+                  <Text style={s.monto}>{formatoMoneda(Number(l.venta_total), l.moneda)}</Text>
                 </View>
               ))}
               <View style={s.filaTotal}>
@@ -248,6 +251,28 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
             </View>
           );
         })}
+
+        {/* Pagos a terceros: van aparte, no suman al total de Dams Cargo. */}
+        {ajenas.length > 0 && (
+          <View style={s.seccion} wrap={false}>
+            <View style={s.seccionCabecera}>
+              <Text style={s.seccionTitulo}>PAGOS A TERCEROS (POR CUENTA DEL CLIENTE)</Text>
+              <Text style={[s.seccionTitulo, s.monto]}>Monto</Text>
+            </View>
+            {ajenas.map((l) => (
+              <View key={l.id} style={s.fila}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text>{l.nombre}{Number(l.cantidad) !== 1 ? `  (${num(l.cantidad)})` : ""}</Text>
+                  {l.nota && l.nota_visible ? <Text style={s.lineaNota}>{l.nota}</Text> : null}
+                </View>
+                <Text style={s.monto}>{formatoMoneda(Number(l.venta_total), l.moneda)}</Text>
+              </View>
+            ))}
+            <View style={s.fila}>
+              <Text style={s.lineaNota}>Estos montos se pagan directamente al tercero indicado y no forman parte de los honorarios de {empresa.nombre_comercial}. Pueden variar según la guía.</Text>
+            </View>
+          </View>
+        )}
 
         <View>
           <Text style={s.notasTitulo} minPresenceAhead={30}>Notas</Text>

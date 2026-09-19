@@ -1,71 +1,52 @@
-import Link from "next/link";
-import { Anchor, Boxes, FileCheck2, Package, Plane, Truck } from "lucide-react";
 import { EditorCotizacion } from "@/components/cotizacion/EditorCotizacion";
+import { SelectorServicios } from "@/components/cotizacion/SelectorServicios";
 import { leerConfig } from "@/lib/config";
 import { datosEditor } from "@/lib/cotizaciones/consultas";
 import { catalogoParaCotizar } from "@/lib/tarifas/consultas";
 import { hoyIso } from "@/lib/calculo/formato";
 import { SERVICIOS } from "@/lib/etiquetas";
+import { sesionRequerida } from "@/lib/sesion";
 import type { TipoServicio } from "@/lib/supabase/tipos";
-
-const ICONOS: Record<TipoServicio, React.ComponentType<{ className?: string }>> = {
-  maritimo_fcl: Boxes,
-  maritimo_lcl: Anchor,
-  aereo: Plane,
-  courier: Package,
-  terrestre: Truck,
-  aduanas: FileCheck2,
-};
 
 export default async function NuevaCotizacion(props: PageProps<"/cotizaciones/nueva">) {
   const sp = await props.searchParams;
-  const tipo = SERVICIOS.find((s) => s.valor === sp.tipo)?.valor;
+  const pedidos = String(sp.tipos ?? sp.tipo ?? "").split(",");
+  const tipos = pedidos.map((t) => SERVICIOS.find((s) => s.valor === t)?.valor).filter((t): t is TipoServicio => !!t);
 
-  // Paso 1: elegir el tipo de cotización. Solo aparece lo que aplica a ese servicio.
-  if (!tipo) {
+  // Paso 1: elegir uno o varios servicios. Solo aparece lo que aplica.
+  if (!tipos.length) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold text-primary">Nueva cotización</h1>
-          <p className="text-sm text-muted-foreground">¿Qué servicio vas a cotizar? Así solo verás las tarifas y los campos que aplican.</p>
+          <p className="text-sm text-muted-foreground">¿Qué vas a cotizar? Marca uno o varios servicios; solo verás las tarifas y los campos que aplican.</p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {SERVICIOS.map((s) => {
-            const Icono = ICONOS[s.valor];
-            return (
-              <Link
-                key={s.valor}
-                href={`/cotizaciones/nueva?tipo=${s.valor}`}
-                className="group flex flex-col gap-3 rounded-lg border bg-card p-5 transition-colors hover:border-primary hover:bg-primary/5"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground">
-                    <Icono className="size-5" />
-                  </span>
-                  <div>
-                    <div className="font-semibold text-primary">{s.texto}</div>
-                    <div className="text-xs text-muted-foreground">{s.descripcion}</div>
-                  </div>
-                </div>
-                <div className="text-xs text-muted-foreground">Ej.: {s.ejemplo}</div>
-              </Link>
-            );
-          })}
-        </div>
+        <SelectorServicios />
       </div>
     );
   }
 
-  const [config, { clientes }, catalogo] = await Promise.all([leerConfig(), datosEditor(), catalogoParaCotizar()]);
+  const sesion = await sesionRequerida();
+  const config = await leerConfig();
+  const [{ clientes }, catalogo] = await Promise.all([
+    datosEditor(),
+    catalogoParaCotizar({ ocultarCostos: !sesion.esAdmin, recargos: config.recargos }),
+  ]);
   return (
     <EditorCotizacion
       id={null}
       numero={null}
+      esAdmin={sesion.esAdmin}
+      puedeEditar
       cabecera={{
-        tipo_servicio: tipo,
+        tipo_servicio: tipos[0],
+        tipos_servicio: tipos,
         cliente_id: null,
         cliente_nombre: "",
         contacto: "",
+        cliente_telefono: "",
+        segmento_courier: tipos.includes("courier") ? "consolidado" : null,
+        valor_mercaderia: "",
         fecha: hoyIso(),
         dias_vigencia: config.defaults.dias_vigencia,
         tipo_carga: "",
@@ -75,7 +56,7 @@ export default async function NuevaCotizacion(props: PageProps<"/cotizaciones/nu
         bultos: "",
         medidas: "",
         mercaderia: "",
-        origen: "",
+        origen: tipos.includes("courier") ? "Miami, Estados Unidos" : "",
         destino: "Guatemala",
         transito: "",
         routing: "",

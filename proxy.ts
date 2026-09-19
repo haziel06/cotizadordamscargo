@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./lib/supabase/config";
 
-/** Refresca la sesión de Supabase y protege todas las rutas salvo /login. */
+/** Refresca la sesión de Supabase y protege todas las rutas salvo /login y /registro. */
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -22,7 +22,8 @@ export async function proxy(request: NextRequest) {
   );
 
   const { data } = await supabase.auth.getUser();
-  const esLogin = request.nextUrl.pathname.startsWith("/login");
+  const ruta = request.nextUrl.pathname;
+  const esLogin = ruta.startsWith("/login") || ruta.startsWith("/registro");
 
   if (!data.user && !esLogin) {
     const url = request.nextUrl.clone();

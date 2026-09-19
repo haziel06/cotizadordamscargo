@@ -1,4 +1,6 @@
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { ventaLinea } from "@/lib/calculo/linea";
+import { SIN_RECARGOS, type Categoria, type Moneda, type Recargos, type TipoMargen } from "@/lib/calculo/tipos";
 import { hoyIso } from "@/lib/calculo/formato";
 import type { Concepto, Proveedor, Tarifario, TarifaRuta } from "@/lib/supabase/tipos";
 
@@ -64,8 +66,12 @@ export async function obtenerTarifario(id: string): Promise<{
   return { tarifario, conceptos: conceptos ?? [], rutas: rutas ?? [], proveedores: proveedores ?? [] };
 }
 
-/** Todo lo activo y vigente que el editor de cotización necesita, en una sola llamada. */
-export async function catalogoParaCotizar() {
+/**
+ * Todo lo activo y vigente que el editor de cotización necesita, en una sola llamada.
+ * Para un usuario normal los costos y márgenes NUNCA salen del servidor: cada concepto y ruta
+ * llega como "precio fijo" igual a la venta unitaria (costo 0, sin recargos).
+ */
+export async function catalogoParaCotizar(opciones: { ocultarCostos?: boolean; recargos?: Recargos } = {}) {
   const supabase = await crearClienteServidor();
   const hoy = hoyIso();
   const [{ data: tarifarios }, { data: conceptos }, { data: rutas }, { data: proveedores }] = await Promise.all([
@@ -76,11 +82,23 @@ export async function catalogoParaCotizar() {
   ]);
   // Los tarifarios vencidos siguen visibles pero marcados: la oficina decide si los usa.
   const conVigencia = (tarifarios ?? []).map((t) => ({ ...t, vencido: Boolean(t.vigencia_hasta && t.vigencia_hasta < hoy) }));
+  if (!opciones.ocultarCostos) {
+    return { tarifarios: conVigencia, conceptos: conceptos ?? [], rutas: rutas ?? [], proveedores: proveedores ?? [] };
+  }
+  const r = opciones.recargos ?? SIN_RECARGOS;
   return {
     tarifarios: conVigencia,
-    conceptos: conceptos ?? [],
-    rutas: rutas ?? [],
+    conceptos: (conceptos ?? []).map((c) => soloVenta(c, Number(c.costo), c.categoria, c.moneda, r)),
+    rutas: (rutas ?? []).map((x) => soloVenta(x, Number(x.costo ?? 0), "internacional", "USD", r)),
     proveedores: proveedores ?? [],
   };
+}
+
+/** Sustituye costo/margen por la venta unitaria como precio fijo. Sirve para conceptos y rutas. */
+function soloVenta<T extends { tipo_margen: TipoMargen; valor_margen: number; aplica_recargos: boolean }>(
+  x: T, costo: number, categoria: Categoria, moneda: Moneda, r: Recargos,
+): T {
+  const venta = ventaLinea({ nombre: "", categoria, moneda, cantidad: 1, costo_unitario: costo, tipo_margen: x.tipo_margen, valor_margen: Number(x.valor_margen), lleva_iva: false, aplica_recargos: x.aplica_recargos }, r);
+  return { ...x, costo: 0, tipo_margen: "precio_fijo", valor_margen: venta, aplica_recargos: false };
 }
 export type Catalogo = Awaited<ReturnType<typeof catalogoParaCotizar>>;

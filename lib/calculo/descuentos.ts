@@ -43,7 +43,8 @@ function repartir(ventas: number[], indices: number[], monto: number) {
 
 export function aplicarDescuentos(lineas: LineaCalculo[], descuentos: Descuento[], tipoCambio: number, recargos: Recargos = SIN_RECARGOS): ResultadoDescuentos {
   const ventas = lineas.map((l) => ventaLinea(l, recargos));
-  const indicesPor = (c: Categoria) => lineas.map((l, i) => (l.categoria === c ? i : -1)).filter((i) => i >= 0);
+  // Los pagos a terceros (cuenta ajena) no reciben descuento.
+  const indicesPor = (c: Categoria) => lineas.map((l, i) => (l.categoria === c && !l.cuenta_ajena ? i : -1)).filter((i) => i >= 0);
   const subtotal = (c: Categoria) => indicesPor(c).reduce((s, i) => s + ventas[i], 0);
   const descuento_por_bloque: Record<Categoria, number> = { internacional: 0, local: 0, naviera: 0 };
 
