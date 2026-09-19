@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Campo } from "@/components/Campos";
 import type { TextosLegales } from "@/lib/config";
+import { EditorNotas } from "@/components/EditorNotas";
 
 interface Props {
   /** null = se usan las de Configuración tal cual. */
@@ -11,7 +12,6 @@ interface Props {
   onChange: (n: TextosLegales | null) => void;
 }
 
-const area = "min-h-32 w-full rounded border border-input bg-white p-2 text-sm outline-none focus:ring-2 focus:ring-ring/30";
 const aTexto = (xs: string[]) => xs.join("\n");
 const aLista = (t: string) => t.split("\n");
 
@@ -42,12 +42,12 @@ export function NotasCotizacion({ notas, porDefecto, onChange }: Props) {
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-2">
         <Campo etiqueta="Notas">
-          <textarea className={area} value={aTexto(valor.notas)} disabled={!personalizadas}
-            onChange={(e) => onChange({ ...valor, notas: aLista(e.target.value) })} />
+          <EditorNotas valor={aTexto(valor.notas)} disabled={!personalizadas} filas={10}
+            onChange={(v) => onChange({ ...valor, notas: aLista(v) })} />
         </Campo>
         <Campo etiqueta="Corre por cuenta del cliente">
-          <textarea className={area} value={aTexto(valor.cuenta_cliente)} disabled={!personalizadas}
-            onChange={(e) => onChange({ ...valor, cuenta_cliente: aLista(e.target.value) })} />
+          <EditorNotas valor={aTexto(valor.cuenta_cliente)} disabled={!personalizadas} filas={4}
+            onChange={(v) => onChange({ ...valor, cuenta_cliente: aLista(v) })} />
         </Campo>
       </CardContent>
     </Card>

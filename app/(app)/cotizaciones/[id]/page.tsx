@@ -4,12 +4,13 @@ import { AccionesCotizacion } from "@/components/cotizacion/AccionesCotizacion";
 import { leerConfig, type TextosLegales } from "@/lib/config";
 import type { DescuentoForm } from "@/lib/cotizaciones/esquema";
 import { datosEditor, estadoEfectivo, obtenerCotizacion } from "@/lib/cotizaciones/consultas";
+import { catalogoParaCotizar } from "@/lib/tarifas/consultas";
 
 type DescuentoGuardado = Omit<DescuentoForm, "_clave">;
 
 export default async function PaginaCotizacion(props: PageProps<"/cotizaciones/[id]">) {
   const { id } = await props.params;
-  const [config, { conceptos, clientes }, datos] = await Promise.all([leerConfig(), datosEditor(), obtenerCotizacion(id)]);
+  const [config, { clientes }, datos, catalogo] = await Promise.all([leerConfig(), datosEditor(), obtenerCotizacion(id), catalogoParaCotizar()]);
   if (!datos) notFound();
   const { cotizacion: c, lineas } = datos;
 
@@ -21,6 +22,7 @@ export default async function PaginaCotizacion(props: PageProps<"/cotizaciones/[
         id={c.id}
         numero={c.numero}
         cabecera={{
+          tipo_servicio: c.tipo_servicio,
           cliente_id: c.cliente_id,
           cliente_nombre: c.cliente_nombre,
           contacto: c.contacto ?? "",
@@ -54,10 +56,16 @@ export default async function PaginaCotizacion(props: PageProps<"/cotizaciones/[
           tipo_margen: l.tipo_margen,
           valor_margen: Number(l.valor_margen),
           lleva_iva: l.lleva_iva,
+          aplica_recargos: l.aplica_recargos,
+          nota: l.nota,
+          nota_visible: l.nota_visible,
+          proveedor_nombre: l.proveedor_nombre,
+          ruta: l.ruta,
         }))}
-        conceptos={conceptos}
+        catalogo={catalogo}
         clientes={clientes}
         defaults={config.defaults}
+        recargos={config.recargos}
         textosDefault={config.textos_legales}
       />
     </div>

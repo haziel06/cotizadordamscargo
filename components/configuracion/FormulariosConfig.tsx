@@ -6,7 +6,8 @@ import { Campo, Entrada, Selector } from "@/components/Campos";
 import { TIPOS_MARGEN } from "@/lib/etiquetas";
 import type { Config } from "@/lib/config";
 import type { Perfil } from "@/lib/config";
-import { guardarDefaults, guardarEmpresa, guardarPerfil, guardarTextosLegales, quitarImagenEmpresa, subirLogo, subirSello } from "@/lib/config-acciones";
+import { EditorNotas } from "@/components/EditorNotas";
+import { guardarDefaults, guardarEmpresa, guardarPerfil, guardarRecargos, guardarTextosLegales, quitarImagenEmpresa, subirLogo, subirSello } from "@/lib/config-acciones";
 
 function useGuardar() {
   const [pendiente, start] = useTransition();
@@ -143,20 +144,19 @@ export function FormTextos({ textos }: { textos: Config["textos_legales"] }) {
   const [notas, setNotas] = useState(textos.notas.join("\n"));
   const [cuenta, setCuenta] = useState(textos.cuenta_cliente.join("\n"));
   const { pendiente, msg, correr } = useGuardar();
-  const area = "min-h-40 w-full rounded border border-input bg-white p-2 text-sm outline-none focus:ring-2 focus:ring-ring/30";
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Textos legales del PDF</CardTitle>
-        <CardDescription>Una viñeta por línea. Se imprimen al pie de cada cotización.</CardDescription>
+        <CardDescription>Una viñeta por línea. Puedes poner negrita, subrayado o resaltado amarillo. Se imprimen al pie de cada cotización.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <Campo etiqueta="Notas">
-          <textarea className={area} value={notas} onChange={(ev) => setNotas(ev.target.value)} />
+          <EditorNotas valor={notas} onChange={setNotas} filas={12} />
         </Campo>
         <Campo etiqueta="Corre por cuenta del cliente lo siguiente">
-          <textarea className={`${area} min-h-24`} value={cuenta} onChange={(ev) => setCuenta(ev.target.value)} />
+          <EditorNotas valor={cuenta} onChange={setCuenta} filas={4} />
         </Campo>
         <div className="flex items-center gap-3">
           <Button disabled={pendiente} onClick={() => correr(() => guardarTextosLegales({ notas: notas.split("\n"), cuenta_cliente: cuenta.split("\n") }))}>
@@ -199,6 +199,41 @@ export function FormDefaults({ defaults }: { defaults: Config["defaults"] }) {
         </div>
         <div className="flex items-center gap-3">
           <Button disabled={pendiente} onClick={() => correr(() => guardarDefaults(d))}>Guardar valores</Button>
+          <Estado msg={msg} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ---------- Impuestos sobre costo de proveedor extranjero ---------- */
+export function FormRecargos({ recargos }: { recargos: Config["recargos"] }) {
+  const [r, setR] = useState(recargos);
+  const { pendiente, msg, correr } = useGuardar();
+  const factor = (1 + r.isr_pct / 100) * (1 + r.no_domiciliada_pct / 100);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Impuestos sobre costo de proveedor</CardTitle>
+        <CardDescription>
+          Se aplican sobre el costo de proveedores extranjeros antes del margen: venta = costo × (1 + ISR) × (1 + no domiciliada) × (1 + margen).
+          Cada concepto tiene un interruptor «Imp.» para activarlos o no.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Campo etiqueta="ISR (%)">
+            <Entrada type="number" step="0.001" min={0} value={r.isr_pct} onChange={(ev) => setR({ ...r, isr_pct: Number(ev.target.value) })} />
+          </Campo>
+          <Campo etiqueta="Empresa no domiciliada (%)">
+            <Entrada type="number" step="0.001" min={0} value={r.no_domiciliada_pct} onChange={(ev) => setR({ ...r, no_domiciliada_pct: Number(ev.target.value) })} />
+          </Campo>
+          <div className="md:col-span-2 self-end text-sm text-muted-foreground">
+            Ejemplo: costo $1.35 → <strong className="num text-foreground">${(1.35 * factor).toFixed(4)}</strong> antes del margen; con 40% → <strong className="num text-foreground">${(1.35 * factor * 1.4).toFixed(2)}</strong>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button disabled={pendiente} onClick={() => correr(() => guardarRecargos(r))}>Guardar impuestos</Button>
           <Estado msg={msg} />
         </div>
       </CardContent>

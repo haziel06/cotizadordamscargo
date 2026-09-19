@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Campo, Entrada, Selector } from "@/components/Campos";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { INCOTERMS, TIPOS_CARGA } from "@/lib/etiquetas";
+import { INCOTERMS, type DefServicio } from "@/lib/etiquetas";
 import type { CabeceraForm } from "@/lib/cotizaciones/esquema";
 import type { Cliente } from "@/lib/supabase/tipos";
 import type { GanadorPeso } from "@/lib/calculo/peso";
@@ -13,9 +13,14 @@ interface Props {
   onChange: (c: Partial<CabeceraForm>) => void;
   clientes: Cliente[];
   peso: { peso: number; gano: GanadorPeso };
+  servicio: DefServicio;
 }
 
-export function DatosCarga({ cabecera: c, onChange, clientes, peso }: Props) {
+const LB_POR_KG = 2.20462;
+
+export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: Props) {
+  const muestra = (campo: DefServicio["campos"][number]) => servicio.campos.includes(campo);
+  const kg = Number(c.kilogramos) || 0;
   const [sugerencias, setSugerencias] = useState<Cliente[]>([]);
 
   const buscarCliente = (texto: string) => {
@@ -91,9 +96,10 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso }: Props) {
         <Campo etiqueta="Tipo de carga" className="md:col-span-3">
           <Selector value={c.tipo_carga ?? ""} onChange={(e) => onChange({ tipo_carga: e.target.value })}>
             <option value="">—</option>
-            {TIPOS_CARGA.map((t) => (
+            {servicio.tiposCarga.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
+            {c.tipo_carga && !servicio.tiposCarga.includes(c.tipo_carga) && <option value={c.tipo_carga}>{c.tipo_carga}</option>}
           </Selector>
         </Campo>
         <Campo etiqueta="Incoterm" className="md:col-span-3">
@@ -117,24 +123,41 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso }: Props) {
           <Entrada value={c.routing ?? ""} onChange={(e) => onChange({ routing: e.target.value })} placeholder="Vía Hong Kong – Puerto Quetzal" />
         </Campo>
 
-        <Campo etiqueta="Bultos" className="md:col-span-2">
-          <Entrada type="number" min={0} value={c.bultos ?? ""} onChange={(e) => onChange({ bultos: e.target.value })} />
-        </Campo>
-        <Campo etiqueta="Kilogramos" className="md:col-span-2">
-          <Entrada type="number" step="0.01" min={0} value={c.kilogramos ?? ""} onChange={(e) => onChange({ kilogramos: e.target.value })} />
-        </Campo>
-        <Campo etiqueta="Kg volumétricos" className="md:col-span-2">
-          <Entrada type="number" step="0.01" min={0} value={c.kg_volumetricos ?? ""} onChange={(e) => onChange({ kg_volumetricos: e.target.value })} />
-        </Campo>
-        <Campo etiqueta="CBM" className="md:col-span-2">
-          <Entrada type="number" step="0.001" min={0} value={c.cbm ?? ""} onChange={(e) => onChange({ cbm: e.target.value })} />
-        </Campo>
-        <Campo etiqueta="Medidas" className="md:col-span-4">
-          <Entrada value={c.medidas ?? ""} onChange={(e) => onChange({ medidas: e.target.value })} placeholder="120 × 80 × 100 cm" />
-        </Campo>
+        {muestra("bultos") && (
+          <Campo etiqueta="Bultos" className="md:col-span-2">
+            <Entrada type="number" min={0} value={c.bultos ?? ""} onChange={(e) => onChange({ bultos: e.target.value })} />
+          </Campo>
+        )}
+        {muestra("kg") && (
+          <Campo etiqueta="Kilogramos" className="md:col-span-2">
+            <Entrada type="number" step="0.01" min={0} value={c.kilogramos ?? ""} onChange={(e) => onChange({ kilogramos: e.target.value })} />
+          </Campo>
+        )}
+        {muestra("libras") && (
+          <Campo etiqueta="Libras" className="md:col-span-2">
+            <Entrada type="number" step="0.01" min={0} value={kg ? Math.round(kg * LB_POR_KG * 100) / 100 : ""}
+              onChange={(e) => onChange({ kilogramos: e.target.value === "" ? "" : Math.round((Number(e.target.value) / LB_POR_KG) * 100) / 100 })} />
+          </Campo>
+        )}
+        {muestra("kg_volumetricos") && (
+          <Campo etiqueta="Kg volumétricos" className="md:col-span-2">
+            <Entrada type="number" step="0.01" min={0} value={c.kg_volumetricos ?? ""} onChange={(e) => onChange({ kg_volumetricos: e.target.value })} />
+          </Campo>
+        )}
+        {muestra("cbm") && (
+          <Campo etiqueta="CBM" className="md:col-span-2">
+            <Entrada type="number" step="0.001" min={0} value={c.cbm ?? ""} onChange={(e) => onChange({ cbm: e.target.value })} />
+          </Campo>
+        )}
+        {muestra("medidas") && (
+          <Campo etiqueta="Medidas" className="md:col-span-4">
+            <Entrada value={c.medidas ?? ""} onChange={(e) => onChange({ medidas: e.target.value })} placeholder="120 × 80 × 100 cm" />
+          </Campo>
+        )}
         {peso.peso > 0 && (
           <div className="text-xs text-muted-foreground md:col-span-12">
             {textoPeso}: <strong className="num">{peso.peso.toLocaleString("en-US")} kg</strong>
+            {muestra("libras") && <> · <strong className="num">{(peso.peso * LB_POR_KG).toLocaleString("en-US", { maximumFractionDigits: 1 })} lb</strong></>}
           </div>
         )}
         <Campo etiqueta="Mercadería" className="md:col-span-8">

@@ -1,6 +1,6 @@
 import { leerConfig, leerPerfil } from "@/lib/config";
 import { usuarioRequerido } from "@/lib/supabase/server";
-import { FormDefaults, FormEmpresa, FormPerfil, FormTextos } from "@/components/configuracion/FormulariosConfig";
+import { FormDefaults, FormEmpresa, FormPerfil, FormRecargos, FormTextos } from "@/components/configuracion/FormulariosConfig";
 
 export default async function PaginaConfiguracion() {
   const { usuario } = await usuarioRequerido();
@@ -14,6 +14,7 @@ export default async function PaginaConfiguracion() {
       <FormPerfil perfil={perfil} correoSesion={usuario?.email ?? ""} />
       <FormEmpresa empresa={config.empresa} />
       <FormDefaults defaults={config.defaults} />
+      <FormRecargos recargos={config.recargos} />
       <FormTextos textos={config.textos_legales} />
       <p className="text-xs text-muted-foreground">
         Usuarios: se crean desde el panel de Supabase (Authentication → Users). No hay registro público.

@@ -102,3 +102,14 @@ export async function guardarDefaults(datos: z.infer<typeof esquemaDefaults>): P
   if (!parsed.success) return { ok: false, error: "Revisa los valores por defecto." };
   return guardarClave("defaults", parsed.data);
 }
+
+const esquemaRecargos = z.object({
+  isr_pct: z.coerce.number().min(0).max(100),
+  no_domiciliada_pct: z.coerce.number().min(0).max(100),
+});
+/** ISR y "no domiciliada" que se cargan sobre costos de proveedores extranjeros antes del margen. */
+export async function guardarRecargos(datos: z.infer<typeof esquemaRecargos>): Promise<Resultado> {
+  const parsed = esquemaRecargos.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: "Revisa los porcentajes." };
+  return guardarClave("recargos", parsed.data);
+}

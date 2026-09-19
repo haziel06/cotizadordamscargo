@@ -1,7 +1,7 @@
 "use client";
 import { AlertTriangle, EyeOff } from "lucide-react";
 import { formatoMoneda, formatoPorcentaje } from "@/lib/calculo/formato";
-import type { Totales } from "@/lib/calculo/tipos";
+import type { Recargos, Totales } from "@/lib/calculo/tipos";
 import type { Alerta } from "@/lib/calculo/alertas";
 import { cn } from "@/lib/utils";
 
@@ -9,9 +9,10 @@ interface Props {
   totales: Totales;
   alertas: Alerta[];
   tipoCambio: number;
+  recargos: Recargos;
 }
 
-export function ResumenVivo({ totales: t, alertas, tipoCambio }: Props) {
+export function ResumenVivo({ totales: t, alertas, tipoCambio, recargos }: Props) {
   const margenBajo = alertas.some((a) => a.tipo === "margen_bajo");
   return (
     <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
@@ -42,6 +43,9 @@ export function ResumenVivo({ totales: t, alertas, tipoCambio }: Props) {
           <Fila etiqueta="Utilidad" valor={formatoMoneda(t.utilidad_gtq, "GTQ")} clase={t.utilidad_gtq < 0 ? "text-destructive" : "text-verde"} />
           <Fila etiqueta="Margen sobre costo" valor={formatoPorcentaje(t.margen_pct)} grande clase={margenBajo ? "text-amber-700" : "text-verde"} />
         </dl>
+        <p className="mt-3 text-[11px] text-amber-900/70">
+          Líneas con «Imp.» llevan ISR {recargos.isr_pct}% + no domiciliada {recargos.no_domiciliada_pct}% sobre el costo antes del margen.
+        </p>
       </div>
 
       {alertas.length > 0 && (

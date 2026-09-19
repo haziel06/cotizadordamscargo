@@ -17,8 +17,21 @@ export const esquemaLinea = z.object({
   tipo_margen: z.enum(["porcentaje", "monto_fijo", "precio_fijo"]),
   valor_margen: z.coerce.number().min(0),
   lleva_iva: z.boolean(),
+  aplica_recargos: z.boolean().default(false),
+  nota: textoOpcional.default(null),
+  nota_visible: z.boolean().default(true),
+  proveedor_nombre: textoOpcional.default(null),
+  ruta: textoOpcional.default(null),
 });
-export type LineaEditable = z.infer<typeof esquemaLinea> & { _clave: string };
+export type LineaEditable = z.infer<typeof esquemaLinea> & {
+  _clave: string;
+  /** Unidad del concepto de origen, para la cantidad automática. */
+  unidad?: string;
+  /** Marcado si el concepto venía con "falta monto". */
+  pendiente?: boolean;
+  /** Sección de la base de tarifas donde se muestra en el editor. */
+  seccion?: string;
+};
 
 export const esquemaDescuento = z.object({
   ambito: z.enum(["internacional", "local", "naviera", "total"]),
@@ -34,6 +47,7 @@ export const esquemaNotas = z.object({
 });
 
 export const esquemaCabecera = z.object({
+  tipo_servicio: z.enum(["maritimo_fcl", "maritimo_lcl", "aereo", "courier", "terrestre", "aduanas"]).default("maritimo_fcl"),
   cliente_id: z.string().uuid().nullable(),
   cliente_nombre: z.string().trim().min(1, "Escribe el nombre del cliente"),
   contacto: textoOpcional,
@@ -60,6 +74,7 @@ export const esquemaCabecera = z.object({
 export type Cabecera = z.infer<typeof esquemaCabecera>;
 /** Lo que maneja el formulario: campos numéricos como string o number, vacíos permitidos. */
 export interface CabeceraForm {
+  tipo_servicio: "maritimo_fcl" | "maritimo_lcl" | "aereo" | "courier" | "terrestre" | "aduanas";
   cliente_id: string | null;
   cliente_nombre: string;
   contacto: string;

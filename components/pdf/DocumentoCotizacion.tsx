@@ -4,6 +4,7 @@ import type { Cotizacion, CotizacionLinea } from "@/lib/supabase/tipos";
 import { fechaVencimiento, formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
 import { redondear } from "@/lib/calculo/linea";
 import type { Moneda } from "@/lib/calculo/tipos";
+import { segmentar } from "@/lib/calculo/formato-texto";
 
 /*
  * PDF para el cliente (spec §8). REGLA CRÍTICA: aquí solo entran precios de venta.
@@ -68,6 +69,8 @@ const s = StyleSheet.create({
   nota: { flexDirection: "row", marginBottom: 0.6 },
   vineta: { width: 10, color: VERDE },
   notaTexto: { flex: 1, fontSize: 7.3, color: "#2B3440", lineHeight: 1.25 },
+  resaltado: { backgroundColor: "#FFF176" },
+  lineaNota: { fontSize: 7, color: GRIS, marginTop: 1 },
 
   cierre: { marginTop: 14, gap: 10 },
   firma: { fontSize: 8.2, lineHeight: 1.4 },
@@ -96,6 +99,26 @@ const BLOQUES: { categoria: CotizacionLinea["categoria"]; titulo: string; moneda
   { categoria: "local", titulo: "GASTOS LOCALES", moneda: "GTQ" },
   { categoria: "naviera", titulo: "GASTOS EN NAVIERA", moneda: "USD" },
 ];
+
+/** Nota con marcas ligeras → runs con negrita / subrayado / resaltado. */
+function TextoConFormato({ texto }: { texto: string }) {
+  return (
+    <Text style={s.notaTexto}>
+      {segmentar(texto).map((seg, i) => (
+        <Text
+          key={i}
+          style={[
+            seg.negrita ? { fontWeight: 700 } : {},
+            seg.subrayado ? { textDecoration: "underline" } : {},
+            seg.resaltado ? s.resaltado : {},
+          ]}
+        >
+          {seg.texto}
+        </Text>
+      ))}
+    </Text>
+  );
+}
 
 const num = (v: number | null) => (v == null ? null : Number(v).toLocaleString("en-US", { maximumFractionDigits: 3 }));
 
@@ -211,7 +234,10 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
               </View>
               {propias.map((l) => (
                 <View key={l.id} style={s.fila}>
-                  <Text>{l.nombre}{Number(l.cantidad) !== 1 ? `  (${num(l.cantidad)})` : ""}</Text>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text>{l.nombre}{Number(l.cantidad) !== 1 ? `  (${num(l.cantidad)})` : ""}</Text>
+                    {l.nota && l.nota_visible ? <Text style={s.lineaNota}>{l.nota}</Text> : null}
+                  </View>
                   <Text style={s.monto}>{formatoMoneda(Number(l.venta_total), b.moneda)}</Text>
                 </View>
               ))}
@@ -228,7 +254,7 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
           {textos.notas.map((n, i) => (
             <View key={i} style={s.nota} wrap={false}>
               <Text style={s.vineta}>•</Text>
-              <Text style={s.notaTexto}>{n}</Text>
+              <TextoConFormato texto={n} />
             </View>
           ))}
         </View>
@@ -239,7 +265,7 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
             {textos.cuenta_cliente.map((n, i) => (
               <View key={i} style={s.nota}>
                 <Text style={s.vineta}>•</Text>
-                <Text style={s.notaTexto}>{n}</Text>
+                <TextoConFormato texto={n} />
               </View>
             ))}
           </View>

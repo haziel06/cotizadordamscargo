@@ -6,6 +6,7 @@ import { totalesCotizacion, ventasFinales } from "@/lib/calculo/totales";
 import { ventaLinea } from "@/lib/calculo/linea";
 import { hoyIso } from "@/lib/calculo/formato";
 import { esquemaGuardar } from "./esquema";
+import { leerConfig } from "@/lib/config";
 import type { Database } from "@/lib/supabase/tipos";
 
 type Estado = Database["public"]["Enums"]["estado_cotizacion"];
@@ -21,9 +22,10 @@ export async function guardarCotizacion(entrada: unknown): Promise<Resultado> {
   const { id, cabecera, lineas } = parsed.data;
 
   const { descuentos, notas, ...cab } = cabecera;
-  const t = totalesCotizacion(lineas, cab.tipo_cambio, descuentos);
-  const finales = ventasFinales(lineas, cab.tipo_cambio, descuentos);
-  const lineasDb = lineas.map((l, i) => ({ ...l, venta_total: finales[i], venta_bruta: ventaLinea(l), orden: i }));
+  const { recargos } = await leerConfig();
+  const t = totalesCotizacion(lineas, cab.tipo_cambio, descuentos, recargos);
+  const finales = ventasFinales(lineas, cab.tipo_cambio, descuentos, recargos);
+  const lineasDb = lineas.map((l, i) => ({ ...l, venta_total: finales[i], venta_bruta: ventaLinea(l, recargos), orden: i }));
 
   const supabase = await crearClienteServidor();
   const { data, error } = await supabase.rpc("guardar_cotizacion", {
