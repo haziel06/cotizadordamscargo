@@ -1,7 +1,8 @@
 import { Defs, Document, Font, Image, LinearGradient, Page, Rect, Stop, StyleSheet, Svg, Text, View } from "@react-pdf/renderer";
 import type { Config, Perfil, TextosLegales } from "@/lib/config";
 import type { Cotizacion, CotizacionLinea } from "@/lib/supabase/tipos";
-import { fechaVencimiento, formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
+import { fechaVencimiento, formatoFechaLarga, formatoMoneda } from "@/lib/calculo/formato";
+import { NOTA_FUERA_PERIMETRO, textosPorDefecto } from "@/lib/etiquetas";
 import { redondear } from "@/lib/calculo/linea";
 import type { Moneda } from "@/lib/calculo/tipos";
 import { segmentar } from "@/lib/calculo/formato-texto";
@@ -124,30 +125,37 @@ const num = (v: number | null) => (v == null ? null : Number(v).toLocaleString("
 
 export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fondo }: Props) {
   const { empresa } = config;
-  const textos: TextosLegales = (c.notas as TextosLegales | null) ?? config.textos_legales;
+  const textos: TextosLegales = (c.notas as TextosLegales | null) ?? textosPorDefecto(c.tipos_servicio?.length ? c.tipos_servicio : [c.tipo_servicio], config.textos_legales);
   const vence = fechaVencimiento(c.fecha, c.dias_vigencia);
   const hayFirma = Boolean(perfil.nombre || perfil.correo || perfil.telefono);
   const ajenas = lineas.filter((l) => l.cuenta_ajena);
+  const esCourier = (c.tipos_servicio ?? []).includes("courier") || c.tipo_servicio === "courier";
+  const entregaTexto = [c.direccion_entrega, c.fuera_perimetro ? "fuera del perímetro capitalino (transporte externo, se cobra aparte)" : "dentro del perímetro capitalino (incluida)"].filter(Boolean).join(" · ");
+  const cuentaCliente = c.fuera_perimetro ? [NOTA_FUERA_PERIMETRO, ...textos.cuenta_cliente] : textos.cuenta_cliente;
 
   const datosIzq: [string, string | null][] = [
-    ["Fecha", formatoFecha(c.fecha)],
+    ["Fecha", formatoFechaLarga(c.fecha)],
     ["Cliente", c.cliente_nombre],
-    ["Atención", [c.contacto, c.cliente_telefono ? `Tel. ${c.cliente_telefono}` : null].filter(Boolean).join(" · ") || null],
-    ["Carga", c.tipo_carga],
-    ["Kilogramos", num(c.kilogramos)],
-    ["Kg volumétricos", num(c.kg_volumetricos)],
-    ["CBM", num(c.cbm)],
-    ["Bultos", num(c.bultos)],
+    // Courier: el consignatario es la empresa del cliente (opcional). Carga: es quien recibe.
+    ...(c.consignatario ? [[esCourier ? "Empresa" : "Consignatario", c.consignatario] as [string, string | null]] : []),
+    ...(c.contacto ? [["Contacto", c.contacto] as [string, string | null]] : []),
+    ...(c.cliente_telefono ? [["Teléfono", c.cliente_telefono] as [string, string | null]] : []),
+    ...(esCourier ? [] : [["Carga", c.tipo_carga] as [string, string | null]]),
+    ...(esCourier
+      ? ([["Peso", c.kilogramos ? `${num(Math.round(Number(c.kilogramos) * 2.20462 * 100) / 100)} lb (${num(c.kilogramos)} kg)` : null],
+          ["Valor declarado", c.valor_mercaderia ? `USD ${num(c.valor_mercaderia)}` : null],
+          ["Bultos", num(c.bultos)]] as [string, string | null][]).filter(([, v]) => v)
+      : ([["Kilogramos", num(c.kilogramos)], ["Kg volumétricos", num(c.kg_volumetricos)], ["CBM", num(c.cbm)], ["Bultos", num(c.bultos)]] as [string, string | null][])),
   ];
-  const datosDer: [string, string | null][] = [
+  const datosDer = ([
     ["Medidas", c.medidas],
     ["Mercadería", c.mercaderia],
     ["Origen", c.origen],
     ["Destino", c.destino],
-    ["Incoterm", c.incoterm],
-    ["Tránsito", c.transito],
-    ["Routing", c.routing],
-  ];
+    ...(esCourier
+      ? [["Entrega", entregaTexto] as [string, string | null]]
+      : ([["Incoterm", c.incoterm], ["Tránsito", c.transito], ["Routing", c.routing]] as [string, string | null][])),
+  ] as [string, string | null][]).filter(([k, v]) => !(esCourier && k === "Medidas" && !v));
 
   return (
     <Document title={`Cotización ${c.numero}`} author={empresa.razon_social} language="es-GT">
@@ -221,7 +229,7 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
           </View>
         </View>
 
-        <Text style={s.vigencia}>Válido al {formatoFecha(vence)}</Text>
+        <Text style={s.vigencia}>Válido hasta el {formatoFechaLarga(vence)}</Text>
 
         {BLOQUES.map((b) => {
           const propias = lineas.filter((l) => l.categoria === b.categoria && !l.cuenta_ajena);
@@ -241,7 +249,7 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
                     <Text>{l.nombre}{Number(l.cantidad) !== 1 ? `  (${num(l.cantidad)})` : ""}</Text>
                     {l.nota && l.nota_visible ? <Text style={s.lineaNota}>{l.nota}</Text> : null}
                   </View>
-                  <Text style={s.monto}>{formatoMoneda(Number(l.venta_total), l.moneda)}</Text>
+                  <Text style={s.monto}>{Number(l.venta_total) === 0 ? "Incluido" : formatoMoneda(Number(l.venta_total), l.moneda)}</Text>
                 </View>
               ))}
               <View style={s.filaTotal}>
@@ -287,7 +295,7 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
         <View style={{ flexDirection: "row", gap: 18, marginTop: 6 }} wrap={false}>
           <View style={{ flex: 6 }}>
             <Text style={s.notasTitulo}>Corre por cuenta del cliente lo siguiente:</Text>
-            {textos.cuenta_cliente.map((n, i) => (
+            {cuentaCliente.map((n, i) => (
               <View key={i} style={s.nota}>
                 <Text style={s.vineta}>•</Text>
                 <TextoConFormato texto={n} />

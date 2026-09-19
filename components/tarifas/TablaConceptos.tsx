@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Archive, ArchiveRestore, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Casilla, Entrada, Selector } from "@/components/Campos";
-import { SECCIONES, TIPOS_MARGEN, UNIDADES, infoSeccion } from "@/lib/etiquetas";
+import { SECCIONES, SERVICIOS_CORTOS, TIPOS_MARGEN, UNIDADES, infoSeccion } from "@/lib/etiquetas";
 import { ventaLinea } from "@/lib/calculo/linea";
 import { formatoMoneda } from "@/lib/calculo/formato";
 import type { Recargos } from "@/lib/calculo/tipos";
@@ -20,7 +20,7 @@ const aFila = (c: Concepto): F => ({
   seccion: c.seccion, moneda: c.moneda, unidad: c.unidad, costo: Number(c.costo), minimo: c.minimo == null ? null : Number(c.minimo),
   rango_desde: c.rango_desde == null ? null : Number(c.rango_desde), rango_hasta: c.rango_hasta == null ? null : Number(c.rango_hasta),
   tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen), aplica_recargos: c.aplica_recargos, aplica_iva: c.aplica_iva,
-  pendiente: c.pendiente, orden: c.orden, notas: c.notas, archivado_at: c.archivado_at,
+  pendiente: c.pendiente, orden: c.orden, notas: c.notas, archivado_at: c.archivado_at, servicios: c.servicios ?? [],
 });
 
 export function TablaConceptos({ tarifario, conceptos, recargos }: { tarifario: Tarifario; conceptos: Concepto[]; recargos: Recargos }) {
@@ -44,7 +44,7 @@ export function TablaConceptos({ tarifario, conceptos, recargos }: { tarifario: 
       _clave: claveNueva(), tarifario_id: tarifario.id, proveedor_id: tarifario.proveedor_id, nombre: "", categoria: sec.categoria, seccion: tarifario.seccion,
       moneda: tarifario.moneda, unidad: "envio", costo: 0, minimo: null, rango_desde: null, rango_hasta: null,
       tipo_margen: tarifario.proveedor_id ? "porcentaje" : "precio_fijo", valor_margen: tarifario.proveedor_id ? 40 : 0,
-      aplica_recargos: Boolean(tarifario.proveedor_id) && tarifario.moneda === "USD", aplica_iva: true, pendiente: false, orden: maxOrden + 10, notas: "",
+      aplica_recargos: Boolean(tarifario.proveedor_id) && tarifario.moneda === "USD", aplica_iva: true, pendiente: false, orden: maxOrden + 10, notas: "", servicios: [],
     });
   };
 
@@ -72,6 +72,7 @@ export function TablaConceptos({ tarifario, conceptos, recargos }: { tarifario: 
             <tr>
               <th className="px-2 py-2 font-medium">Concepto</th>
               <th className="px-2 py-2 font-medium">Sección</th>
+              <th className="px-2 py-2 font-medium" title="Servicios en los que se ofrece. Ninguno marcado = todos.">Aplica a</th>
               <th className="px-2 py-2 font-medium">Unidad</th>
               <th className="px-2 py-2 text-right font-medium">Costo</th>
               <th className="px-2 py-2 text-right font-medium">Mínimo</th>
@@ -87,7 +88,7 @@ export function TablaConceptos({ tarifario, conceptos, recargos }: { tarifario: 
           </thead>
           <tbody className="divide-y">
             {visibles.length === 0 && (
-              <tr><td colSpan={13} className="px-3 py-8 text-center text-muted-foreground">Sin conceptos en este tarifario.</td></tr>
+              <tr><td colSpan={14} className="px-3 py-8 text-center text-muted-foreground">Sin conceptos en este tarifario.</td></tr>
             )}
             {visibles.map((f) => (
               <tr key={f._clave} className={cn(f.archivado_at && "opacity-50", f.pendiente && "bg-amber-50/60")}>
@@ -100,6 +101,21 @@ export function TablaConceptos({ tarifario, conceptos, recargos }: { tarifario: 
                   <Selector value={f.seccion} onChange={(e) => guardar(f._clave, { seccion: e.target.value, categoria: infoSeccion(e.target.value).categoria })} className="w-40">
                     {SECCIONES.map((s) => <option key={s.valor} value={s.valor}>{s.texto}</option>)}
                   </Selector>
+                </td>
+                <td className="px-2 py-1">
+                  <div className="flex w-36 flex-wrap gap-0.5">
+                    {SERVICIOS_CORTOS.map((sv) => {
+                      const on = f.servicios.includes(sv.valor);
+                      return (
+                        <button key={sv.valor} type="button" title={on ? "Quitar" : "Solo en este servicio"}
+                          className={cn("rounded border px-1 text-[10px] leading-4", on ? "border-primary bg-primary text-primary-foreground" : "bg-white text-muted-foreground hover:bg-muted")}
+                          onClick={() => guardar(f._clave, { servicios: on ? f.servicios.filter((x) => x !== sv.valor) : [...f.servicios, sv.valor] })}>
+                          {sv.corto}
+                        </button>
+                      );
+                    })}
+                    {f.servicios.length === 0 && <span className="text-[10px] text-muted-foreground">todos</span>}
+                  </div>
                 </td>
                 <td className="px-2 py-1">
                   <Selector value={f.unidad} onChange={(e) => guardar(f._clave, { unidad: e.target.value as F["unidad"] })} className="w-28">

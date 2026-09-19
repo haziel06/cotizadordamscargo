@@ -20,6 +20,13 @@ export function formatoFecha(iso: string): string {
   return `${d}/${m}/${a}`;
 }
 
+const MESES_LARGOS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+/** Fecha ISO `AAAA-MM-DD` → `17 de septiembre de 2026` (documentos para el cliente). */
+export function formatoFechaLarga(iso: string): string {
+  const [a, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return `${d} de ${MESES_LARGOS[m - 1]} de ${a}`;
+}
+
 /** Fecha ISO de vencimiento = fecha + días de vigencia. Calcula en UTC para no depender del huso. */
 export function fechaVencimiento(fechaIso: string, dias: number): string {
   const [a, m, d] = fechaIso.slice(0, 10).split("-").map(Number);

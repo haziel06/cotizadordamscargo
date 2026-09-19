@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { Campo, Entrada, Selector } from "@/components/Campos";
+import { Campo, Casilla, Entrada, Selector } from "@/components/Campos";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { INCOTERMS, LIMITE_TICKET_USD, SEGMENTOS_COURIER, type CampoCarga, type DefServicio } from "@/lib/etiquetas";
 import { SOBREPESO_KG } from "@/lib/calculo/tipos";
@@ -72,12 +72,12 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
         <CardTitle>Cliente y carga</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-12">
-        <Campo etiqueta="Empresa / cliente (sale en el PDF)" className="relative md:col-span-4">
+        <Campo etiqueta={esCourier ? "Cliente (nombre de la persona o empresa)" : "Cliente / empresa que cotiza"} className="relative md:col-span-4">
           <Entrada
             value={c.cliente_nombre}
             onChange={(e) => buscarCliente(e.target.value)}
             onBlur={() => setTimeout(() => setSugerencias([]), 150)}
-            placeholder="Nombre de la empresa"
+            placeholder={esCourier ? "Ej. María Pérez" : "Nombre de la empresa"}
             autoComplete="off"
           />
           {sugerencias.length > 0 && (
@@ -99,13 +99,26 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
           )}
           {c.cliente_id && <span className="text-xs text-verde">Cliente registrado</span>}
         </Campo>
-        <Campo etiqueta="Nombre de contacto" className="md:col-span-3">
-          <Entrada value={c.contacto ?? ""} onChange={(e) => onChange({ contacto: e.target.value })} placeholder="Persona que solicita" autoComplete="off" />
-        </Campo>
+        {esCourier ? (
+          <Campo etiqueta="Empresa (opcional)" className="md:col-span-3">
+            <Entrada value={c.consignatario ?? ""} onChange={(e) => onChange({ consignatario: e.target.value })} placeholder="Solo si pide a nombre de una empresa" autoComplete="off" />
+          </Campo>
+        ) : (
+          <>
+            {muestra("consignatario") && (
+              <Campo etiqueta="Consignatario (quien recibe)" className="md:col-span-3">
+                <Entrada value={c.consignatario ?? ""} onChange={(e) => onChange({ consignatario: e.target.value })} placeholder="Ej. Liling Huarui Ceramic Co." autoComplete="off" />
+              </Campo>
+            )}
+            <Campo etiqueta="Contacto" className="md:col-span-2">
+              <Entrada value={c.contacto ?? ""} onChange={(e) => onChange({ contacto: e.target.value })} placeholder="Lic. Hugo Gómez" autoComplete="off" />
+            </Campo>
+          </>
+        )}
         <Campo etiqueta="Teléfono" className="md:col-span-2">
           <Entrada value={c.cliente_telefono ?? ""} onChange={(e) => onChange({ cliente_telefono: e.target.value })} placeholder="5555-5555" autoComplete="off" />
         </Campo>
-        <Campo etiqueta="Fecha" className="md:col-span-2">
+        <Campo etiqueta="Fecha" className={esCourier ? "md:col-span-2" : "md:col-span-1"}>
           <Entrada type="date" value={c.fecha} onChange={(e) => onChange({ fecha: e.target.value })} />
         </Campo>
         <Campo etiqueta="Vigencia (días)" className="md:col-span-1">
@@ -152,35 +165,60 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
           />
           {tcFuera && <div className="mt-1 text-xs text-amber-800">Verifica el tipo de cambio</div>}
         </div>
-        <Campo etiqueta="Tipo de carga" className="md:col-span-3">
-          <Selector value={c.tipo_carga ?? ""} onChange={(e) => onChange({ tipo_carga: e.target.value })}>
-            <option value="">—</option>
-            {servicio.tiposCarga.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-            {c.tipo_carga && !servicio.tiposCarga.includes(c.tipo_carga) && <option value={c.tipo_carga}>{c.tipo_carga}</option>}
-          </Selector>
-        </Campo>
-        <Campo etiqueta="Incoterm" className="md:col-span-3">
-          <Selector value={c.incoterm ?? ""} onChange={(e) => onChange({ incoterm: e.target.value })}>
-            <option value="">—</option>
-            {INCOTERMS.map((i) => (
-              <option key={i.valor} value={i.valor}>{i.texto}</option>
-            ))}
-          </Selector>
-        </Campo>
+        {muestra("comercial") && (
+          <>
+            <Campo etiqueta="Tipo de carga" className="md:col-span-3">
+              <Selector value={c.tipo_carga ?? ""} onChange={(e) => onChange({ tipo_carga: e.target.value })}>
+                <option value="">—</option>
+                {servicio.tiposCarga.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+                {c.tipo_carga && !servicio.tiposCarga.includes(c.tipo_carga) && <option value={c.tipo_carga}>{c.tipo_carga}</option>}
+              </Selector>
+            </Campo>
+            <Campo etiqueta="Incoterm" className="md:col-span-3">
+              <Selector value={c.incoterm ?? ""} onChange={(e) => onChange({ incoterm: e.target.value })}>
+                <option value="">—</option>
+                {INCOTERMS.map((i) => (
+                  <option key={i.valor} value={i.valor}>{i.texto}</option>
+                ))}
+              </Selector>
+            </Campo>
+          </>
+        )}
         <Campo etiqueta="Origen" className="md:col-span-3">
-          <Entrada value={c.origen ?? ""} onChange={(e) => onChange({ origen: e.target.value })} placeholder="Xiamen, China" />
+          <Entrada value={c.origen ?? ""} onChange={(e) => onChange({ origen: e.target.value })} placeholder={esCourier ? "Miami, Estados Unidos" : "Xiamen, China"} />
         </Campo>
         <Campo etiqueta="Destino" className="md:col-span-3">
           <Entrada value={c.destino ?? "Guatemala"} onChange={(e) => onChange({ destino: e.target.value })} />
         </Campo>
-        <Campo etiqueta="Tránsito" className="md:col-span-3">
-          <Entrada value={c.transito ?? ""} onChange={(e) => onChange({ transito: e.target.value })} placeholder="35 – 45 días" />
-        </Campo>
-        <Campo etiqueta="Routing" className="md:col-span-6">
-          <Entrada value={c.routing ?? ""} onChange={(e) => onChange({ routing: e.target.value })} placeholder="Vía Hong Kong – Puerto Quetzal" />
-        </Campo>
+        {muestra("comercial") && (
+          <>
+            <Campo etiqueta="Tránsito" className="md:col-span-3">
+              <Entrada value={c.transito ?? ""} onChange={(e) => onChange({ transito: e.target.value })} placeholder="35 – 45 días" />
+            </Campo>
+            <Campo etiqueta="Routing" className="md:col-span-6">
+              <Entrada value={c.routing ?? ""} onChange={(e) => onChange({ routing: e.target.value })} placeholder="Vía Hong Kong – Puerto Quetzal" />
+            </Campo>
+          </>
+        )}
+        {muestra("entrega") && (
+          <div className={cn("rounded-lg border p-3 md:col-span-6", c.fuera_perimetro ? "border-ambar bg-ambar/10" : "border-verde/40 bg-verde/5")}>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <Campo etiqueta="Dirección de entrega">
+                <Entrada value={c.direccion_entrega ?? ""} onChange={(e) => onChange({ direccion_entrega: e.target.value })} placeholder="Ej. 12 av. 3-45 zona 15, Guatemala" autoComplete="off" />
+              </Campo>
+              <label className="flex items-center gap-2 pb-2 text-sm">
+                <Casilla checked={c.fuera_perimetro} onChange={(e) => onChange({ fuera_perimetro: e.target.checked })} /> Fuera del perímetro capitalino
+              </label>
+            </div>
+            <p className={cn("mt-1 text-xs", c.fuera_perimetro ? "text-amber-900" : "text-verde")}>
+              {c.fuera_perimetro
+                ? "Se envía con expreso externo: el costo del transporte se cobra aparte según destino. El PDF lo indica al cliente."
+                : "Dentro del perímetro capitalino la entrega va incluida en el precio por libra."}
+            </p>
+          </div>
+        )}
 
         {muestra("bultos") && (
           <Campo etiqueta="Bultos" className="md:col-span-2">

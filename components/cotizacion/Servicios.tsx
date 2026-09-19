@@ -4,20 +4,24 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Lock, Package, Plus, Wan
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Casilla, Entrada, Selector } from "@/components/Campos";
-import { SECCIONES, infoSeccion, textoUnidad, type DefServicio } from "@/lib/etiquetas";
+import { SECCIONES, conceptoAplica, infoSeccion, textoUnidad, type DefServicio } from "@/lib/etiquetas";
 import { ventaLinea } from "@/lib/calculo/linea";
 import { formatoMoneda, formatoFecha } from "@/lib/calculo/formato";
 import type { LineaEditable } from "@/lib/cotizaciones/esquema";
 import type { Catalogo } from "@/lib/tarifas/consultas";
-import type { Concepto, SegmentoCourier, TarifaRuta } from "@/lib/supabase/tipos";
+import type { Concepto, SegmentoCourier, TarifaRuta, TipoServicio } from "@/lib/supabase/tipos";
 import type { Categoria, Moneda, Recargos, TipoMargen, Unidad } from "@/lib/calculo/tipos";
 import { ControlMargen } from "./ControlMargen";
 import { cn } from "@/lib/utils";
 
 interface Props {
   servicio: DefServicio;
+  /** Servicios de la cotización: solo se ofrecen los conceptos que aplican a alguno. */
+  tipos: TipoServicio[];
   /** Solo cuando la cotización incluye courier: habilita las plantillas Ticket / Consolidado. */
   segmentoCourier: SegmentoCourier | null;
+  /** Courier fuera del perímetro capitalino: no se agrega la entrega incluida. */
+  fueraPerimetro?: boolean;
   lineas: LineaEditable[];
   catalogo: Catalogo;
   onChange: (fn: (ls: LineaEditable[]) => LineaEditable[]) => void;
@@ -41,7 +45,8 @@ const textoVia = (via: string | null) => {
 const LB_POR_KG = 2.20462;
 const SIGUEN_MEDIDAS: Unidad[] = ["kg", "libra", "cbm", "pie_cubico"];
 
-export function Servicios({ servicio, segmentoCourier, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin }: Props) {
+export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin }: Props) {
+  const conceptosAplicables = useMemo(() => catalogo.conceptos.filter((c) => conceptoAplica(c.servicios, tipos)), [catalogo.conceptos, tipos]);
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>(() => Object.fromEntries(servicio.secciones.map((s, i) => [s, i < 2])));
   const [busquedaRuta, setBusquedaRuta] = useState<Record<string, string>>({});
   const [verTodas, setVerTodas] = useState(false);
@@ -116,16 +121,17 @@ export function Servicios({ servicio, segmentoCourier, lineas, catalogo, onChang
     const libras = medidas.pesoCobrable ? medidas.pesoCobrable * LB_POR_KG : 0;
     const primero = (xs: Concepto[]) => xs.find((c) => !marcadosAhora.has(c.id));
     const nuevas: Concepto[] = [];
-    const courier = primero(catalogo.conceptos.filter((c) => c.seccion === "courier" && c.unidad === "libra"));
+    const courier = primero(conceptosAplicables.filter((c) => c.seccion === "courier" && c.unidad === "libra"));
     if (courier) nuevas.push(courier);
+    // Entrega según el peso: hasta 132 lb va incluida (línea en $0 para que el cliente lo vea).
+    const entregas = conceptosAplicables.filter((c) => c.seccion === "entrega_domicilio");
+    const entrega = primero(entregas.filter((c) => (c.rango_desde == null || libras >= Number(c.rango_desde)) && (c.rango_hasta == null || libras <= Number(c.rango_hasta)))) ?? primero(entregas);
+    if (entrega && !(fueraPerimetro && Number(entrega.costo) === 0 && Number(entrega.valor_margen) === 0)) nuevas.push(entrega);
     if (segmento === "ticket") {
-      const docs = catalogo.conceptos.filter((c) => c.seccion === "documentacion" && /tr[aá]mite/i.test(c.nombre));
+      const docs = conceptosAplicables.filter((c) => c.seccion === "documentacion" && /tr[aá]mite/i.test(c.nombre));
       const tramite = primero(docs.filter((c) => /courier|a[eé]reo|lcl/i.test(c.nombre))) ?? primero(docs);
       if (tramite) nuevas.push(tramite);
-      const entregas = catalogo.conceptos.filter((c) => c.seccion === "entrega_domicilio");
-      const entrega = primero(entregas.filter((c) => (c.rango_desde == null || libras >= Number(c.rango_desde)) && (c.rango_hasta == null || libras <= Number(c.rango_hasta)))) ?? primero(entregas);
-      if (entrega) nuevas.push(entrega);
-      for (const a of catalogo.conceptos.filter((c) => c.seccion === "gastos_ajenos" || c.cuenta_ajena)) if (!marcadosAhora.has(a.id)) nuevas.push(a);
+      for (const a of conceptosAplicables.filter((c) => c.seccion === "gastos_ajenos" || c.cuenta_ajena)) if (!marcadosAhora.has(a.id)) nuevas.push(a);
     }
     if (!nuevas.length) return;
     onChange((ls) => [...ls, ...nuevas.filter((c) => !ls.some((l) => l.concepto_id === c.id)).map(lineaDesdeConcepto)]);
@@ -169,7 +175,7 @@ export function Servicios({ servicio, segmentoCourier, lineas, catalogo, onChang
             <Package className="size-4 text-primary" />
             <span className="font-medium text-primary">Courier {segmentoCourier === "ticket" ? "Ticket" : "Consolidado"}</span>
             <span className="text-xs text-muted-foreground">
-              {segmentoCourier === "ticket" ? "Libra + trámite aduanero + entrega; el almacenaje va aparte como pago a tercero." : "Solo se cobra la libra."}
+              {segmentoCourier === "ticket" ? "Libra + trámite aduanero + entrega; el almacenaje va aparte como pago a tercero." : "Solo se cobra la libra; la entrega en el perímetro capitalino va incluida."}
             </span>
             <Button size="sm" className="ml-auto" onClick={() => armarCourier(segmentoCourier)}>
               <Wand2 /> Armar {segmentoCourier === "ticket" ? "Ticket" : "Consolidado"}
@@ -180,7 +186,7 @@ export function Servicios({ servicio, segmentoCourier, lineas, catalogo, onChang
       <CardContent className="space-y-3">
         {secciones.map((sec) => {
           const info = infoSeccion(sec);
-          const conceptos = catalogo.conceptos.filter((c) => c.seccion === sec);
+          const conceptos = conceptosAplicables.filter((c) => c.seccion === sec);
           const tarifariosRuta = catalogo.tarifarios.filter((t) => t.seccion === sec && catalogo.rutas.some((r) => r.tarifario_id === t.id));
           const propias = lineas.filter((l) => seccionDe(l) === sec);
           const abierta = abiertas[sec] ?? false;

@@ -60,6 +60,10 @@ export const esquemaCabecera = z.object({
   cliente_nombre: z.string().trim().min(1, "Escribe el nombre de la empresa o cliente"),
   contacto: textoOpcional,
   cliente_telefono: textoOpcional,
+  /** Empresa que recibe la carga (LCL/FCL) o empresa del cliente en courier. Opcional. */
+  consignatario: textoOpcional.default(null),
+  direccion_entrega: textoOpcional.default(null),
+  fuera_perimetro: z.boolean().default(false),
   segmento_courier: z.enum(["ticket", "consolidado", "documentos"]).nullable().default(null),
   valor_mercaderia: numOpcional,
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
@@ -91,6 +95,9 @@ export interface CabeceraForm {
   cliente_nombre: string;
   contacto: string;
   cliente_telefono: string;
+  consignatario: string;
+  direccion_entrega: string;
+  fuera_perimetro: boolean;
   segmento_courier: "ticket" | "consolidado" | "documentos" | null;
   valor_mercaderia: number | string;
   fecha: string;

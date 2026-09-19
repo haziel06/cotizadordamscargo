@@ -77,7 +77,12 @@ export const AMBITOS_DESCUENTO: { valor: "internacional" | "local" | "naviera" |
  * Tipos de cotización (primer paso al crear una). Cada uno dice qué secciones de tarifas
  * aparecen y qué campos de carga importan.
  */
-export type CampoCarga = "contenedor" | "cbm" | "kg" | "kg_volumetricos" | "libras" | "bultos" | "medidas" | "valor_mercaderia";
+/**
+ * Campos de la cabecera que muestra cada servicio. `comercial` = incoterm, tránsito, routing y tipo de carga
+ * (carga comercial; un paquete personal de courier no los usa). `consignatario` = empresa que recibe, aparte del
+ * contacto. `entrega` = dirección y perímetro (courier).
+ */
+export type CampoCarga = "contenedor" | "cbm" | "kg" | "kg_volumetricos" | "libras" | "bultos" | "medidas" | "valor_mercaderia" | "comercial" | "consignatario" | "entrega";
 export interface DefServicio {
   valor: TipoServicio;
   /** Familia para agrupar las tarjetas al elegir: Marítimo, Aéreo, Local. */
@@ -95,37 +100,37 @@ export const SERVICIOS: DefServicio[] = [
   {
     valor: "maritimo_fcl", grupo: "Marítimo", texto: "Marítimo FCL", descripcion: "Contenedor completo", ejemplo: "China → Guatemala, 1 × 40HC",
     secciones: ["flete_maritimo", "gastos_origen", "naviera", "gastos_locales", "documentacion", "transporte_local", "seguridad", "ayudantes"],
-    campos: ["contenedor", "kg", "cbm", "bultos"],
+    campos: ["contenedor", "kg", "cbm", "bultos", "comercial", "consignatario"],
     tiposCarga: ["FCL 20GP", "FCL 40GP", "FCL 40HC", "FCL 45HC"],
   },
   {
     valor: "maritimo_lcl", grupo: "Marítimo", texto: "Marítimo LCL / consolidado", descripcion: "Carga suelta por CBM", ejemplo: "Xiamen → Guatemala, 6.05 CBM",
     secciones: ["flete_maritimo", "gastos_origen", "naviera", "gastos_locales", "documentacion", "transporte_local", "seguridad", "ayudantes", "entrega_domicilio"],
-    campos: ["cbm", "kg", "bultos", "medidas"],
+    campos: ["cbm", "kg", "bultos", "medidas", "comercial", "consignatario"],
     tiposCarga: ["Consolidado marítimo LCL"],
   },
   {
     valor: "aereo", grupo: "Aéreo", texto: "Carga aérea", descripcion: "Carga aérea por kg o libra", ejemplo: "Miami → Guatemala, 130 lb",
     secciones: ["flete_aereo", "gastos_origen", "gastos_locales", "documentacion", "transporte_local", "entrega_domicilio", "ayudantes"],
-    campos: ["kg", "kg_volumetricos", "libras", "bultos", "medidas"],
+    campos: ["kg", "kg_volumetricos", "libras", "bultos", "medidas", "comercial", "consignatario"],
     tiposCarga: ["Carga aérea consolidada", "Carga aérea directa"],
   },
   {
     valor: "courier", grupo: "Aéreo", texto: "Courier", descripcion: "Ticket o consolidado, por libra", ejemplo: "Miami → Guatemala, 25 lb",
     secciones: ["courier", "documentacion", "entrega_domicilio", "gastos_ajenos", "gastos_locales"],
-    campos: ["libras", "kg", "bultos", "valor_mercaderia"],
+    campos: ["libras", "kg", "bultos", "valor_mercaderia", "entrega"],
     tiposCarga: ["Courier", "Carga express aérea"],
   },
   {
     valor: "terrestre", grupo: "Local", texto: "Transporte terrestre", descripcion: "Puerto o bodega → destino local", ejemplo: "Puerto Quetzal → zona 12",
     secciones: ["transporte_local", "seguridad", "ayudantes", "entrega_domicilio"],
-    campos: ["contenedor", "kg", "bultos", "medidas"],
+    campos: ["contenedor", "kg", "bultos", "medidas", "comercial", "consignatario"],
     tiposCarga: ["Contenedor", "Carga suelta"],
   },
   {
     valor: "aduanas", grupo: "Local", texto: "Gestión aduanera", descripcion: "El cliente ya trae la carga", ejemplo: "Trámite, DUCA, TLC",
     secciones: ["documentacion", "almacenadora", "gastos_locales", "seguridad"],
-    campos: ["contenedor", "kg", "cbm", "bultos"],
+    campos: ["contenedor", "kg", "cbm", "bultos", "comercial", "consignatario"],
     tiposCarga: ["FCL", "LCL", "Aéreo", "Courier"],
   },
 ];
@@ -159,6 +164,37 @@ export const SEGMENTOS_COURIER: { valor: "ticket" | "consolidado" | "documentos"
   { valor: "documentos", texto: "Documentos", descripcion: "Sobres y documentos sin valor comercial." },
 ];
 export const LIMITE_TICKET_USD = 1000;
+/** Abreviaturas para marcar a qué servicios aplica un concepto de la base de tarifas. */
+export const SERVICIOS_CORTOS: { valor: TipoServicio; corto: string }[] = [
+  { valor: "maritimo_fcl", corto: "FCL" }, { valor: "maritimo_lcl", corto: "LCL" }, { valor: "aereo", corto: "Aéreo" },
+  { valor: "courier", corto: "Courier" }, { valor: "terrestre", corto: "Terr." }, { valor: "aduanas", corto: "Aduana" },
+];
+/** Un concepto sin servicios marcados aplica a todos. */
+export const conceptoAplica = (servicios: TipoServicio[] | null | undefined, tipos: TipoServicio[]) =>
+  !servicios || servicios.length === 0 || tipos.some((t) => servicios.includes(t));
+/**
+ * Notas por defecto de courier (paquetería). Las generales de Configuración son de carga marítima
+ * ("no incluye entrega local", naviera, puerto…) y contradicen al courier.
+ */
+export const TEXTOS_COURIER = {
+  notas: [
+    "Precios en $ no incluyen IVA",
+    "Tarifa por libra sobre **peso real**; el peso se confirma al recibir el paquete en Miami",
+    "==Entrega a domicilio incluida dentro del perímetro capitalino==; fuera del perímetro se cobra transporte externo según destino",
+    "Aplica para mercadería con valor menor a **$1,000**; facturas mayores pasan a póliza (Ticket: trámite aduanero + almacenaje aparte)",
+    "No incluye impuestos de importación ni almacenaje: el cliente los paga directo (SAT / Combex-Im)",
+    "Mercadería voluminosa o frágil se cotiza por separado",
+    "Seguro opcional: 1.5% sobre el valor CIF",
+    "No se transporta carga IMO, baterías sueltas, líquidos inflamables, armas ni réplicas de marca",
+  ],
+  cuenta_cliente: ["Impuestos de importación (SAT)", "Almacenaje en Combex-Im cuando aplique", "Permisos especiales o licencias"],
+};
+/** Textos por defecto según los servicios de la cotización. */
+export function textosPorDefecto(tipos: TipoServicio[], generales: { notas: string[]; cuenta_cliente: string[] }) {
+  return tipos.length === 1 && tipos[0] === "courier" ? TEXTOS_COURIER : generales;
+}
+/** Nota que va al PDF cuando la entrega de courier es fuera del perímetro capitalino. */
+export const NOTA_FUERA_PERIMETRO = "La entrega es **fuera del perímetro capitalino**: se envía con expreso externo y el costo del transporte se cobra aparte según el destino.";
 
 /** Secciones de la base de tarifas. `categoria` = bloque del PDF donde caen sus líneas. */
 export const SECCIONES: { valor: string; texto: string; categoria: Categoria; moneda: Moneda; descripcion: string }[] = [

@@ -100,6 +100,8 @@ const esquemaConcepto = z.object({
   pendiente: z.boolean(),
   orden: z.coerce.number().int(),
   notas: texto,
+  /** Servicios a los que aplica; vacío = todos. */
+  servicios: z.array(z.enum(["maritimo_fcl", "maritimo_lcl", "aereo", "courier", "terrestre", "aduanas"])).default([]),
 });
 export type DatosConcepto = z.infer<typeof esquemaConcepto>;
 

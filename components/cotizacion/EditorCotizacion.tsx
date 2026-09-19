@@ -13,7 +13,7 @@ import type { CabeceraForm, LineaEditable } from "@/lib/cotizaciones/esquema";
 import type { Defaults, TextosLegales } from "@/lib/config";
 import type { Cliente } from "@/lib/supabase/tipos";
 import type { Catalogo } from "@/lib/tarifas/consultas";
-import { LIMITE_TICKET_USD, servicioCombinado } from "@/lib/etiquetas";
+import { LIMITE_TICKET_USD, servicioCombinado, textosPorDefecto } from "@/lib/etiquetas";
 import { DatosCarga } from "./DatosCarga";
 import { Servicios } from "./Servicios";
 import { ResumenVivo } from "./ResumenVivo";
@@ -123,7 +123,9 @@ export function EditorCotizacion(p: EditorProps) {
 
           <Servicios
             servicio={servicio}
+            tipos={cabecera.tipos_servicio}
             segmentoCourier={esCourier ? cabecera.segmento_courier : null}
+            fueraPerimetro={cabecera.fuera_perimetro}
             lineas={lineas}
             catalogo={p.catalogo}
             onChange={cambiarLineas}
@@ -135,7 +137,7 @@ export function EditorCotizacion(p: EditorProps) {
 
           <Descuentos descuentos={cabecera.descuentos} onChange={(d) => cambiarCabecera({ descuentos: d })} />
 
-          <NotasCotizacion notas={cabecera.notas} porDefecto={p.textosDefault} onChange={(nn) => cambiarCabecera({ notas: nn })} />
+          <NotasCotizacion notas={cabecera.notas} porDefecto={textosPorDefecto(cabecera.tipos_servicio, p.textosDefault)} onChange={(nn) => cambiarCabecera({ notas: nn })} />
         </fieldset>
       </div>
 
