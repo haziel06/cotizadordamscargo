@@ -131,6 +131,18 @@ export async function duplicarCotizacion(id: string): Promise<Resultado> {
   return { ok: true, id: data };
 }
 
+/** Borra varias de una vez (limpieza). RLS: solo las propias o, si es admin, cualquiera. */
+export async function eliminarCotizaciones(ids: string[]): Promise<{ ok: true; borradas: number } | { ok: false; error: string }> {
+  const limpios = ids.filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+  if (!limpios.length) return { ok: false, error: "Nada seleccionado." };
+  const supabase = await crearClienteServidor();
+  const { data, error } = await supabase.from("cotizaciones").delete().in("id", limpios).select("id");
+  if (error) return { ok: false, error: "No se pudieron borrar." };
+  revalidatePath("/");
+  revalidatePath("/cotizaciones");
+  return { ok: true, borradas: data?.length ?? 0 };
+}
+
 export async function eliminarCotizacion(id: string): Promise<Resultado> {
   const supabase = await crearClienteServidor();
   const { error } = await supabase.from("cotizaciones").delete().eq("id", id);

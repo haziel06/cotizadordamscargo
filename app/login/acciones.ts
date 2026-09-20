@@ -24,13 +24,21 @@ export async function registrarse(_: EstadoAuth, form: FormData): Promise<Estado
   const nombre = String(form.get("nombre") ?? "").trim();
   const correo = String(form.get("correo") ?? "").trim().toLowerCase();
   const clave = String(form.get("clave") ?? "");
-  const codigo = String(form.get("codigo") ?? "").trim().toUpperCase();
-  if (!nombre || !correo || !clave || !codigo) return { error: "Completa todos los campos." };
+  // Acepta el código pegado como sea: "inv-kkkuum", con espacios, o el enlace completo de invitación.
+  const crudo = String(form.get("codigo") ?? "");
+  const encontrado = crudo.toUpperCase().replace(/\s+/g, "").match(/INV-?([A-Z0-9]{6})/);
+  const codigo = encontrado ? `INV-${encontrado[1]}` : "";
+  if (!nombre || !correo || !clave) return { error: "Completa todos los campos." };
+  if (!codigo) return { error: `No reconozco el código "${crudo.trim()}". Tiene la forma INV-XXXXXX (6 letras o números).` };
   if (clave.length < 8) return { error: "La contraseña debe tener al menos 8 caracteres." };
 
   const supabase = await crearClienteServidor();
-  const { data: valido } = await supabase.rpc("validar_invitacion", { p_codigo: codigo });
-  if (!valido) return { error: "Código de invitación inválido o vencido. Pídele uno al administrador." };
+  const { data: valido, error: errValidar } = await supabase.rpc("validar_invitacion", { p_codigo: codigo });
+  if (errValidar) {
+    console.error("validar_invitacion", errValidar);
+    return { error: "No se pudo comprobar el código. Intenta de nuevo en un momento." };
+  }
+  if (!valido) return { error: `El código ${codigo} ya se usó, está vencido o fue desactivado. Pídele uno nuevo al administrador.` };
 
   const { data, error } = await supabase.auth.signUp({
     email: correo,
@@ -38,9 +46,12 @@ export async function registrarse(_: EstadoAuth, form: FormData): Promise<Estado
     options: { data: { nombre, codigo_invitacion: codigo } },
   });
   if (error) {
-    if (error.message.toLowerCase().includes("already")) return { error: "Ese correo ya tiene cuenta. Inicia sesión." };
-    if (error.message.toLowerCase().includes("database")) return { error: "Código de invitación inválido o vencido." };
-    return { error: "No se pudo crear la cuenta. Intenta de nuevo." };
+    console.error("signUp", error.status, error.message);
+    const m = error.message.toLowerCase();
+    if (m.includes("already")) return { error: "Ese correo ya tiene cuenta. Inicia sesión." };
+    if (m.includes("rate limit") || error.status === 429) return { error: "Se enviaron demasiados correos de confirmación en la última hora. Espera un rato o pide al administrador que desactive la confirmación por correo." };
+    if (m.includes("database")) return { error: `La base rechazó el registro con el código ${codigo} (¿lo usó otra persona hace un momento?). Pide uno nuevo.` };
+    return { error: `No se pudo crear la cuenta: ${error.message}` };
   }
   if (data.session) redirect("/");
   return { aviso: "Cuenta creada. Revisa tu correo y confirma la dirección para entrar." };

@@ -6,10 +6,11 @@ import { calcularMetricas } from "@/lib/cotizaciones/metricas";
 import { fechaVencimiento, formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
 import { ESTADOS, infoEstado, infoServicio } from "@/lib/etiquetas";
 import { sesionRequerida } from "@/lib/sesion";
-import { BarrasHorizontales, BarrasVerticales, Tarjeta } from "@/components/panel/Graficas";
+import { BarrasHorizontales, BarrasVerticales, Dona, PALETA, Tarjeta } from "@/components/panel/Graficas";
 import { cn } from "@/lib/utils";
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const COLOR_ESTADO: Record<string, string> = { borrador: "#9CA3AF", enviada: "#3B82F6", aceptada: "#2E7D4F", rechazada: "#DC2626", vencida: "#E8A33D" };
 const q = (v: number) => formatoMoneda(v, "GTQ");
 
 export default async function Inicio(props: PageProps<"/">) {
@@ -55,7 +56,7 @@ export default async function Inicio(props: PageProps<"/">) {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Tarjeta titulo="Todas" valor={m.total} href="/cotizaciones" />
         {ESTADOS.map((e) => (
-          <Tarjeta key={e.valor} titulo={e.texto} valor={m.porEstado[e.valor]} href={`/cotizaciones?estado=${e.valor}`}
+          <Tarjeta key={e.valor} titulo={e.texto} valor={m.porEstado[e.valor]} href={`/cotizaciones?estado=${e.valor}`} acento={COLOR_ESTADO[e.valor]}
             clase={e.valor === "aceptada" ? "text-verde" : e.valor === "vencida" ? "text-amber-700" : e.valor === "rechazada" ? "text-red-700" : undefined} />
         ))}
       </div>
@@ -73,17 +74,26 @@ export default async function Inicio(props: PageProps<"/">) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel titulo="Cotizaciones por día" detalle="Últimos 30 días">
-          <BarrasVerticales datos={m.porDia.map((d) => ({ etiqueta: d.dia.slice(8), valor: d.n, titulo: `${formatoFecha(d.dia)}: ${d.n}` }))} etiquetaCada={3} />
+        <Panel titulo="Estado de las cotizaciones" detalle="Cómo está repartido todo lo cotizado">
+          <Dona centroTitulo="cotizaciones" datos={ESTADOS.map((e) => ({ etiqueta: e.texto, valor: m.porEstado[e.valor], color: COLOR_ESTADO[e.valor] }))} />
+        </Panel>
+        <Panel titulo="Monto por tipo de servicio" detalle="Quetzales cotizados por servicio">
+          <Dona formato={(v) => q(v)} centroTitulo="cotizado" datos={m.porServicio.map((s, i) => ({ etiqueta: infoServicio(s.servicio).texto, valor: s.monto_gtq, color: PALETA[i % PALETA.length], detalle: `${s.n} cot. · ${q(s.monto_gtq)}` }))} />
         </Panel>
         <Panel titulo="Cotizaciones por mes" detalle="Últimos 12 meses · en verde las aceptadas">
           <BarrasVerticales datos={m.porMes.map((d) => ({ etiqueta: MESES[Number(d.mes.slice(5)) - 1], valor: d.n, secundario: d.aceptadas, titulo: `${d.mes}: ${d.n} cotizadas, ${d.aceptadas} aceptadas, ${q(d.monto_gtq)}` }))} />
         </Panel>
-        <Panel titulo="Por tipo de servicio" detalle="Cantidad y monto cotizado">
-          <BarrasHorizontales datos={m.porServicio.map((s) => ({ etiqueta: infoServicio(s.servicio).texto, valor: s.n, detalle: `${s.n} · ${q(s.monto_gtq)}` }))} />
+        <Panel titulo="Cotizaciones por día" detalle="Últimos 30 días">
+          <BarrasVerticales datos={m.porDia.map((d) => ({ etiqueta: d.dia.slice(8), valor: d.n, titulo: `${formatoFecha(d.dia)}: ${d.n}` }))} etiquetaCada={3} />
         </Panel>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
         <Panel titulo="Clientes con más monto cotizado" detalle="Top 6">
           <BarrasHorizontales datos={m.topClientes.map((c) => ({ etiqueta: c.cliente, valor: c.monto_gtq, detalle: `${c.n} · ${q(c.monto_gtq)}` }))} />
+        </Panel>
+        <Panel titulo="Tasa de aceptación por servicio" detalle="Aceptadas sobre las que ya tuvieron respuesta">
+          <BarrasHorizontales datos={m.porServicioTasa.map((s) => ({ etiqueta: infoServicio(s.servicio).texto, valor: s.tasa, detalle: `${s.tasa}% (${s.aceptadas}/${s.respondidas})`, color: s.tasa >= 50 ? "#2E7D4F" : s.tasa > 0 ? "#E8A33D" : "#9CA3AF" }))} />
         </Panel>
       </div>
 

@@ -21,7 +21,7 @@ export function FormularioRegistro({ codigoInicial }: { codigoInicial?: string }
       <div className="space-y-1.5">
         <Label htmlFor="codigo">Código de invitación</Label>
         <Input id="codigo" name="codigo" defaultValue={codigoInicial} placeholder="INV-XXXXXX" autoComplete="off" required className="font-mono uppercase" />
-        <p className="text-xs text-muted-foreground">Te lo da el administrador de Dams Cargo.</p>
+        <p className="text-xs text-muted-foreground">Te lo da el administrador de Dams Cargo. Puedes pegar el código o el enlace completo.</p>
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="nombre">Tu nombre</Label>

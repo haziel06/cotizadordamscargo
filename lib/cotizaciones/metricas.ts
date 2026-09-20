@@ -30,6 +30,7 @@ export interface Metricas {
   porDia: { dia: string; n: number }[];
   porMes: { mes: string; n: number; monto_gtq: number; aceptadas: number }[];
   porServicio: { servicio: TipoServicio; n: number; monto_gtq: number }[];
+  porServicioTasa: { servicio: TipoServicio; aceptadas: number; respondidas: number; tasa: number }[];
   topClientes: { cliente: string; n: number; monto_gtq: number }[];
   porVencer: FilaMetrica[];
   ultimas: FilaMetrica[];
@@ -84,6 +85,13 @@ export function calcularMetricas(filas: FilaMetrica[], hoy = new Date()): Metric
   }
   const porServicio = [...porServicioMap.entries()].map(([servicio, v]) => ({ servicio, ...v })).sort((a, b) => b.n - a.n);
 
+  const porServicioTasa = [...porServicioMap.keys()].map((servicio) => {
+    const del = filas.filter((f) => (f.tipos_servicio?.[0] ?? f.tipo_servicio) === servicio);
+    const aceptadas = del.filter((f) => f.estado_efectivo === "aceptada").length;
+    const respondidas = del.filter((f) => ["aceptada", "rechazada", "vencida"].includes(f.estado_efectivo)).length;
+    return { servicio, aceptadas, respondidas, tasa: respondidas ? Math.round((aceptadas / respondidas) * 100) : 0 };
+  }).sort((a, b) => b.respondidas - a.respondidas);
+
   const clientesMap = new Map<string, { n: number; monto_gtq: number }>();
   for (const f of filas) {
     const k = f.cliente_nombre.trim();
@@ -99,7 +107,7 @@ export function calcularMetricas(filas: FilaMetrica[], hoy = new Date()): Metric
     .slice(0, 8);
   const ultimas = [...filas].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 8);
 
-  return { porEstado, total: filas.length, mes, tasa_aceptacion, porDia, porMes, porServicio, topClientes, porVencer, ultimas };
+  return { porEstado, total: filas.length, mes, tasa_aceptacion, porDia, porMes, porServicio, porServicioTasa, topClientes, porVencer, ultimas };
 }
 
 const suma = (xs: number[]) => Math.round(xs.reduce((s, x) => s + x, 0) * 100) / 100;

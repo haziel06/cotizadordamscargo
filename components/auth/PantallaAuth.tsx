@@ -12,9 +12,7 @@ export function PantallaAuth({ titulo, subtitulo, children }: { titulo: string; 
         <Image src="/pdf/fondo-encabezado.jpg" alt="" fill priority className="object-cover opacity-40" sizes="55vw" />
         <div className="absolute inset-0 bg-gradient-to-br from-marino via-marino/85 to-marino/40" />
         <div className="relative">
-          <div className="inline-flex items-center gap-3 rounded-xl bg-white/95 px-4 py-3 shadow-lg">
-            <Image src="/logo/dams-cargo.png" alt="Dams Cargo" width={160} height={48} className="h-10 w-auto" priority />
-          </div>
+          <Image src="/logo/dams-cargo-oscuro.png" alt="Dams Cargo · Aduanas & Logística" width={900} height={300} className="h-auto w-full max-w-md" priority />
         </div>
         <div className="relative space-y-6">
           <div>
@@ -34,8 +32,8 @@ export function PantallaAuth({ titulo, subtitulo, children }: { titulo: string; 
 
       <section className="flex items-center justify-center bg-background px-6 py-10">
         <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden">
-            <Image src="/logo/dams-cargo.png" alt="Dams Cargo" width={140} height={42} className="h-9 w-auto" priority />
+          <div className="mb-8 rounded-xl bg-marino p-4 lg:hidden">
+            <Image src="/logo/dams-cargo-oscuro.png" alt="Dams Cargo" width={600} height={200} className="mx-auto h-auto w-full max-w-[260px]" priority />
           </div>
           <h1 className="text-2xl font-semibold text-primary">{titulo}</h1>
           <p className="mb-6 text-sm text-muted-foreground">{subtitulo}</p>

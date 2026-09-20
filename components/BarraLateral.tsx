@@ -21,11 +21,11 @@ export function BarraLateral({ nombre, email, esAdmin, cerrarSesion }: Props) {
 
   const contenido = (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-4 py-4">
-        <Link href="/" className="rounded-lg bg-white px-3 py-2" onClick={() => setAbierta(false)}>
-          <Image src="/logo/dams-cargo.png" alt="Dams Cargo" width={120} height={36} className="h-7 w-auto" priority />
+      <div className="relative flex items-center justify-center px-3 pb-2 pt-5">
+        <Link href="/" className="block w-full" onClick={() => setAbierta(false)}>
+          <Image src="/logo/dams-cargo-oscuro.png" alt="Dams Cargo · Aduanas & Logística" width={480} height={160} className="mx-auto h-auto w-full max-w-[220px]" priority />
         </Link>
-        <button type="button" className="rounded p-1 text-white/70 hover:bg-white/10 lg:hidden" onClick={() => setAbierta(false)} aria-label="Cerrar menú">
+        <button type="button" className="absolute right-2 top-2 rounded p-1 text-white/70 hover:bg-white/10 lg:hidden" onClick={() => setAbierta(false)} aria-label="Cerrar menú">
           <X className="size-5" />
         </button>
       </div>
@@ -63,8 +63,8 @@ export function BarraLateral({ nombre, email, esAdmin, cerrarSesion }: Props) {
         <button type="button" className="rounded p-1 hover:bg-white/10" onClick={() => setAbierta(true)} aria-label="Abrir menú">
           <Menu className="size-5" />
         </button>
-        <Link href="/" className="rounded bg-white px-2 py-1">
-          <Image src="/logo/dams-cargo.png" alt="Dams Cargo" width={100} height={30} className="h-6 w-auto" />
+        <Link href="/">
+          <Image src="/logo/dams-cargo-oscuro.png" alt="Dams Cargo" width={300} height={100} className="h-9 w-auto" />
         </Link>
       </header>
       {abierta && <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setAbierta(false)} />}

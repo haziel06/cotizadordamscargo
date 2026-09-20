@@ -6,6 +6,7 @@ import { formatoFecha, formatoMoneda, formatoPorcentaje } from "@/lib/calculo/fo
 import { ESTADOS, infoServicio } from "@/lib/etiquetas";
 import { sesionRequerida } from "@/lib/sesion";
 import { SelectorEstado } from "@/components/cotizacion/SelectorEstado";
+import { CasillaFila, CasillaTodas, SeleccionLista } from "@/components/cotizacion/SeleccionLista";
 import { cn } from "@/lib/utils";
 
 export default async function ListaCotizaciones(props: PageProps<"/cotizaciones">) {
@@ -17,6 +18,8 @@ export default async function ListaCotizaciones(props: PageProps<"/cotizaciones"
   const [cotizaciones, perfiles] = await Promise.all([listarCotizaciones({ estado, q, usuario }), sesion.esAdmin ? listarPerfiles() : Promise.resolve([])]);
   const nombreDe = new Map(perfiles.map((p) => [p.user_id, p.nombre || p.email]));
   const vencidas = estado ? 0 : cotizaciones.filter((c) => c.estado_efectivo === "vencida").length;
+  const puedeBorrar = (c: { creado_por: string | null }) => sesion.esAdmin || c.creado_por === sesion.userId;
+  const idsBorrables = cotizaciones.filter(puedeBorrar).map((c) => c.id);
   const params = (extra: Record<string, string>) => {
     const u = new URLSearchParams();
     for (const [k, v] of Object.entries({ q, estado, usuario, ...extra })) if (v) u.set(k, v);
@@ -69,11 +72,13 @@ export default async function ListaCotizaciones(props: PageProps<"/cotizaciones"
         </div>
       </form>
 
+      <SeleccionLista ids={idsBorrables}>
       <div className="overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-4 py-2 font-medium">Número</th>
+              <th className="w-8 px-3 py-2"><CasillaTodas ids={idsBorrables} /></th>
+              <th className="px-3 py-2 font-medium">Número</th>
               <th className="px-3 py-2 font-medium">Cliente</th>
               <th className="px-3 py-2 font-medium">Servicio</th>
               {sesion.esAdmin && <th className="px-3 py-2 font-medium">Creada por</th>}
@@ -86,7 +91,7 @@ export default async function ListaCotizaciones(props: PageProps<"/cotizaciones"
           <tbody className="divide-y">
             {cotizaciones.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
                   {q || estado ? "No hay cotizaciones con ese filtro." : "Todavía no hay cotizaciones. Crea la primera."}
                 </td>
               </tr>
@@ -96,7 +101,8 @@ export default async function ListaCotizaciones(props: PageProps<"/cotizaciones"
               const tipos = c.tipos_servicio?.length ? c.tipos_servicio : [c.tipo_servicio];
               return (
                 <tr key={c.id} className="hover:bg-muted/40">
-                  <td className="px-4 py-2 font-medium">
+                  <td className="px-3 py-2"><CasillaFila id={c.id} disabled={!puedeBorrar(c)} /></td>
+                  <td className="px-3 py-2 font-medium">
                     <Link href={`/cotizaciones/${c.id}`} className="text-primary hover:underline">{c.numero}</Link>
                   </td>
                   <td className="px-3 py-2">
@@ -120,6 +126,8 @@ export default async function ListaCotizaciones(props: PageProps<"/cotizaciones"
           </tbody>
         </table>
       </div>
+      </SeleccionLista>
+      <p className="text-xs text-muted-foreground">Marca una o varias filas para borrarlas. Para cambiar el estado usa el selector de cada fila.</p>
     </div>
   );
 }
