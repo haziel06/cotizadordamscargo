@@ -4,6 +4,7 @@ import Link from "next/link";
 import { registrarse } from "@/app/login/acciones";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CampoClave } from "@/components/CampoClave";
 import { Label } from "@/components/ui/label";
 
 export function FormularioRegistro({ codigoInicial }: { codigoInicial?: string }) {
@@ -33,7 +34,7 @@ export function FormularioRegistro({ codigoInicial }: { codigoInicial?: string }
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="clave">Contraseña</Label>
-        <Input id="clave" name="clave" type="password" autoComplete="new-password" minLength={8} required />
+        <CampoClave id="clave" name="clave" autoComplete="new-password" minLength={8} required />
         <p className="text-xs text-muted-foreground">Mínimo 8 caracteres.</p>
       </div>
       {estado?.error && <p className="text-sm text-destructive">{estado.error}</p>}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { iniciarSesion } from "./acciones";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CampoClave } from "@/components/CampoClave";
 import { Label } from "@/components/ui/label";
 
 export function FormularioLogin({ inactivo }: { inactivo?: boolean }) {
@@ -16,7 +17,7 @@ export function FormularioLogin({ inactivo }: { inactivo?: boolean }) {
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="clave">Contraseña</Label>
-        <Input id="clave" name="clave" type="password" autoComplete="current-password" required />
+        <CampoClave id="clave" name="clave" autoComplete="current-password" required />
       </div>
       {inactivo && <p className="text-sm text-destructive">Tu cuenta está desactivada. Habla con el administrador.</p>}
       {estado?.error && <p className="text-sm text-destructive">{estado.error}</p>}
