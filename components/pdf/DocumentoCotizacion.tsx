@@ -52,7 +52,7 @@ const s = StyleSheet.create({
   tituloSub: { fontSize: 9, color: GRIS, marginTop: 2 },
   numero: { fontSize: 11, fontWeight: 700, color: MARINO },
 
-  datos: { flexDirection: "row", borderWidth: 1, borderColor: LINEA, borderRadius: 3, marginBottom: 8 },
+  datos: { flexDirection: "column", borderWidth: 1, borderColor: LINEA, borderRadius: 3, marginBottom: 8 },
   columna: { flex: 1 },
   dato: { flexDirection: "row", paddingVertical: 2.4, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: LINEA },
   filaDatos: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: LINEA },
