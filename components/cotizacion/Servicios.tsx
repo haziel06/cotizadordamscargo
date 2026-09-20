@@ -151,7 +151,12 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
     });
 
   const marcados = new Set(lineas.map((l) => l.concepto_id).filter(Boolean));
-  const secciones = verTodas ? SECCIONES.map((s) => s.valor) : servicio.secciones;
+  // Courier consolidado (compras < $1,000) no lleva trámite aduanero ni pagos a terceros: esas
+  // secciones solo aparecen en Ticket. Con "Mostrar todas" se ven igual, por si hace falta.
+  const soloConsolidado = tipos.length === 1 && tipos[0] === "courier" && segmentoCourier === "consolidado";
+  const secciones = verTodas
+    ? SECCIONES.map((s) => s.valor)
+    : servicio.secciones.filter((x) => !(soloConsolidado && (x === "documentacion" || x === "gastos_ajenos")));
   /** Sección donde se muestra una línea: la suya si está visible; si no, la primera visible de su bloque. */
   const seccionDe = (l: LineaEditable) => {
     if (l.seccion && secciones.includes(l.seccion)) return l.seccion;

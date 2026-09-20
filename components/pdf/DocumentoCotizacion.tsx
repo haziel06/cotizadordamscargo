@@ -55,6 +55,8 @@ const s = StyleSheet.create({
   datos: { flexDirection: "row", borderWidth: 1, borderColor: LINEA, borderRadius: 3, marginBottom: 8 },
   columna: { flex: 1 },
   dato: { flexDirection: "row", paddingVertical: 2.4, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: LINEA },
+  filaDatos: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: LINEA },
+  celdaDato: { flex: 1, flexDirection: "row", paddingVertical: 2.4, paddingHorizontal: 8 },
   datoEtiqueta: { width: 82, color: GRIS, fontWeight: 600, fontSize: 8 },
   datoValor: { flex: 1, fontSize: 8.5 },
   vigencia: { textAlign: "center", fontWeight: 600, color: MARINO, backgroundColor: FONDO, paddingVertical: 3.5, marginBottom: 8, borderRadius: 3 },
@@ -73,8 +75,10 @@ const s = StyleSheet.create({
   resaltado: { backgroundColor: "#FFF176" },
   lineaNota: { fontSize: 7, color: GRIS, marginTop: 1 },
 
-  cierre: { marginTop: 14, gap: 10 },
-  firma: { fontSize: 8.2, lineHeight: 1.4 },
+  firma: { fontSize: 8.2, lineHeight: 1.4, textAlign: "right" },
+  firmaTitulo: { fontSize: 7, color: GRIS, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 2 },
+  cierre: { marginTop: 14, paddingTop: 8 },
+  cierreLinea: { borderTopWidth: 1, borderTopColor: LINEA, marginBottom: 8 },
   firmaNombre: { fontWeight: 700, color: MARINO, fontSize: 9 },
   sello: { width: 150, borderWidth: 1.6, borderColor: MARINO, borderRadius: 3, paddingVertical: 5, paddingHorizontal: 8, transform: "rotate(-4deg)", opacity: 0.85 },
   selloTexto: { color: MARINO, fontSize: 6.6, textAlign: "center", lineHeight: 1.35 },
@@ -210,23 +214,29 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
           <Text style={s.numero}>No. {c.numero}</Text>
         </View>
 
+        {/* Filas emparejadas: si un lado tiene más renglones que el otro (ej. courier con "Entrega"
+            de dos líneas), cada fila sigue compartiendo el mismo alto en vez de dos columnas sueltas. */}
         <View style={s.datos}>
-          <View style={[s.columna, { borderRightWidth: 1, borderRightColor: LINEA }]}>
-            {datosIzq.map(([k, v]) => (
-              <View key={k} style={s.dato}>
-                <Text style={s.datoEtiqueta}>{k}</Text>
-                <Text style={s.datoValor}>{v || "—"}</Text>
+          {Array.from({ length: Math.max(datosIzq.length, datosDer.length) }).map((_, i, arr) => (
+            <View key={i} style={[s.filaDatos, i === arr.length - 1 ? { borderBottomWidth: 0 } : {}]}>
+              <View style={[s.celdaDato, { borderRightWidth: 1, borderRightColor: LINEA }]}>
+                {datosIzq[i] && (
+                  <>
+                    <Text style={s.datoEtiqueta}>{datosIzq[i][0]}</Text>
+                    <Text style={s.datoValor}>{datosIzq[i][1] || "—"}</Text>
+                  </>
+                )}
               </View>
-            ))}
-          </View>
-          <View style={s.columna}>
-            {datosDer.map(([k, v]) => (
-              <View key={k} style={s.dato}>
-                <Text style={s.datoEtiqueta}>{k}</Text>
-                <Text style={s.datoValor}>{v || "—"}</Text>
+              <View style={s.celdaDato}>
+                {datosDer[i] && (
+                  <>
+                    <Text style={s.datoEtiqueta}>{datosDer[i][0]}</Text>
+                    <Text style={s.datoValor}>{datosDer[i][1] || "—"}</Text>
+                  </>
+                )}
               </View>
-            ))}
-          </View>
+            </View>
+          ))}
         </View>
 
         <Text style={s.vigencia}>Válido hasta el {formatoFechaLarga(vence)}</Text>
@@ -292,19 +302,22 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
           ))}
         </View>
 
-        <View style={{ flexDirection: "row", gap: 18, marginTop: 6 }} wrap={false}>
-          <View style={{ flex: 6 }}>
-            <Text style={s.notasTitulo}>Corre por cuenta del cliente lo siguiente:</Text>
-            {cuentaCliente.map((n, i) => (
-              <View key={i} style={s.nota}>
-                <Text style={s.vineta}>•</Text>
-                <TextoConFormato texto={n} />
-              </View>
-            ))}
-          </View>
-          {/* Firma de quien cotiza + sello de la empresa */}
-          <View style={{ flex: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", gap: 8 }}>
+        <View style={{ marginTop: 6 }} wrap={false}>
+          <Text style={s.notasTitulo}>Corre por cuenta del cliente lo siguiente:</Text>
+          {cuentaCliente.map((n, i) => (
+            <View key={i} style={s.nota}>
+              <Text style={s.vineta}>•</Text>
+              <TextoConFormato texto={n} />
+            </View>
+          ))}
+        </View>
+
+        {/* Quien atendió + sello: bloque propio al final, separado de las notas para que no se confundan. */}
+        <View style={s.cierre} wrap={false}>
+          <View style={s.cierreLinea} />
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "flex-end", gap: 22 }}>
             <View style={s.firma}>
+              <Text style={s.firmaTitulo}>Le atendió</Text>
               {hayFirma ? (
                 <>
                   <Text style={s.firmaNombre}>{perfil.nombre || empresa.nombre_comercial}</Text>

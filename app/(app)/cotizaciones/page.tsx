@@ -3,8 +3,9 @@ import { AlertTriangle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { listarCotizaciones, listarPerfiles } from "@/lib/cotizaciones/consultas";
 import { formatoFecha, formatoMoneda, formatoPorcentaje } from "@/lib/calculo/formato";
-import { ESTADOS, infoEstado, infoServicio } from "@/lib/etiquetas";
+import { ESTADOS, infoServicio } from "@/lib/etiquetas";
 import { sesionRequerida } from "@/lib/sesion";
+import { SelectorEstado } from "@/components/cotizacion/SelectorEstado";
 import { cn } from "@/lib/utils";
 
 export default async function ListaCotizaciones(props: PageProps<"/cotizaciones">) {
@@ -77,7 +78,7 @@ export default async function ListaCotizaciones(props: PageProps<"/cotizaciones"
               <th className="px-3 py-2 font-medium">Servicio</th>
               {sesion.esAdmin && <th className="px-3 py-2 font-medium">Creada por</th>}
               <th className="px-3 py-2 font-medium">Fecha</th>
-              <th className="px-3 py-2 font-medium">Estado</th>
+              <th className="px-3 py-2 font-medium" title="Cámbialo aquí mismo">Estado</th>
               <th className="px-3 py-2 text-right font-medium">Total (Q)</th>
               {sesion.esAdmin && <th className="px-3 py-2 text-right font-medium" title="Interno: margen sobre costo">Margen</th>}
             </tr>
@@ -91,7 +92,6 @@ export default async function ListaCotizaciones(props: PageProps<"/cotizaciones"
               </tr>
             )}
             {cotizaciones.map((c) => {
-              const info = infoEstado(c.estado_efectivo);
               const margen = Number(c.margen_pct);
               const tipos = c.tipos_servicio?.length ? c.tipos_servicio : [c.tipo_servicio];
               return (
@@ -110,7 +110,7 @@ export default async function ListaCotizaciones(props: PageProps<"/cotizaciones"
                   {sesion.esAdmin && <td className="px-3 py-2 text-muted-foreground">{c.creado_por ? nombreDe.get(c.creado_por) ?? "—" : "—"}</td>}
                   <td className="px-3 py-2 whitespace-nowrap">{formatoFecha(c.fecha)}</td>
                   <td className="px-3 py-2">
-                    <span className={cn("rounded px-2 py-0.5 text-xs font-medium", info.clase)}>{info.texto}</span>
+                    <SelectorEstado id={c.id} estado={c.estado} estadoEfectivo={c.estado_efectivo} modo="compacto" disabled={!sesion.esAdmin && c.creado_por !== sesion.userId} />
                   </td>
                   <td className="num px-3 py-2 text-right font-medium">{formatoMoneda(Number(c.total_gtq), "GTQ")}</td>
                   {sesion.esAdmin && <td className={cn("num px-3 py-2 text-right", margen < 15 ? "text-amber-700" : "text-verde")}>{formatoPorcentaje(margen)}</td>}
