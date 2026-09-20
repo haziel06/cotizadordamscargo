@@ -24,7 +24,7 @@ type ConceptoRow = {
   created_at: string; updated_at: string;
   seccion: string; tarifario_id: string | null; aplica_recargos: boolean; minimo: number | null;
   rango_desde: number | null; rango_hasta: number | null; pendiente: boolean; archivado_at: string | null;
-  cuenta_ajena: boolean; servicios: Enums["tipo_servicio"][];
+  cuenta_ajena: boolean; servicios: Enums["tipo_servicio"][]; editable_por_todos: boolean;
 };
 type TarifarioRow = {
   id: string; nombre: string; proveedor_id: string | null; servicio: Enums["tipo_servicio"] | null; seccion: string;
@@ -65,7 +65,7 @@ type CotizacionRow = {
   cliente_telefono: string | null; segmento_courier: SegmentoCourier | null; valor_mercaderia: number | null;
   consignatario: string | null; direccion_entrega: string | null; fuera_perimetro: boolean;
 };
-export type SegmentoCourier = "ticket" | "consolidado" | "documentos";
+export type SegmentoCourier = "ticket" | "consolidado" | "documentos" | "compras_internet";
 export type Rol = "admin" | "usuario";
 type PerfilRow = {
   user_id: string; nombre: string; cargo: string; correo: string; telefono: string;

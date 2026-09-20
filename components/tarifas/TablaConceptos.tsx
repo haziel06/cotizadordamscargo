@@ -20,7 +20,7 @@ const aFila = (c: Concepto): F => ({
   seccion: c.seccion, moneda: c.moneda, unidad: c.unidad, costo: Number(c.costo), minimo: c.minimo == null ? null : Number(c.minimo),
   rango_desde: c.rango_desde == null ? null : Number(c.rango_desde), rango_hasta: c.rango_hasta == null ? null : Number(c.rango_hasta),
   tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen), aplica_recargos: c.aplica_recargos, aplica_iva: c.aplica_iva,
-  pendiente: c.pendiente, orden: c.orden, notas: c.notas, archivado_at: c.archivado_at, servicios: c.servicios ?? [],
+  pendiente: c.pendiente, orden: c.orden, notas: c.notas, archivado_at: c.archivado_at, servicios: c.servicios ?? [], editable_por_todos: c.editable_por_todos ?? false,
 });
 
 export function TablaConceptos({ tarifario, conceptos, recargos }: { tarifario: Tarifario; conceptos: Concepto[]; recargos: Recargos }) {
@@ -44,7 +44,7 @@ export function TablaConceptos({ tarifario, conceptos, recargos }: { tarifario: 
       _clave: claveNueva(), tarifario_id: tarifario.id, proveedor_id: tarifario.proveedor_id, nombre: "", categoria: sec.categoria, seccion: tarifario.seccion,
       moneda: tarifario.moneda, unidad: "envio", costo: 0, minimo: null, rango_desde: null, rango_hasta: null,
       tipo_margen: tarifario.proveedor_id ? "porcentaje" : "precio_fijo", valor_margen: tarifario.proveedor_id ? 40 : 0,
-      aplica_recargos: Boolean(tarifario.proveedor_id) && tarifario.moneda === "USD", aplica_iva: true, pendiente: false, orden: maxOrden + 10, notas: "", servicios: [],
+      aplica_recargos: Boolean(tarifario.proveedor_id) && tarifario.moneda === "USD", aplica_iva: true, pendiente: false, orden: maxOrden + 10, notas: "", servicios: [], editable_por_todos: false,
     });
   };
 
@@ -82,13 +82,14 @@ export function TablaConceptos({ tarifario, conceptos, recargos }: { tarifario: 
               <th className="px-2 py-2 text-center font-medium" title="Lleva ISR + no domiciliada">Imp.</th>
               <th className="px-2 py-2 text-center font-medium">IVA</th>
               <th className="px-2 py-2 text-right font-medium">Venta</th>
+              <th className="px-2 py-2 text-center font-medium" title="Cualquier usuario puede ajustar el precio de venta final, sin ver costo ni margen">Cualquiera</th>
               <th className="px-2 py-2 text-center font-medium" title="Falta monto">Falta</th>
               <th className="px-2 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {visibles.length === 0 && (
-              <tr><td colSpan={14} className="px-3 py-8 text-center text-muted-foreground">Sin conceptos en este tarifario.</td></tr>
+              <tr><td colSpan={15} className="px-3 py-8 text-center text-muted-foreground">Sin conceptos en este tarifario.</td></tr>
             )}
             {visibles.map((f) => (
               <tr key={f._clave} className={cn(f.archivado_at && "opacity-50", f.pendiente && "bg-amber-50/60")}>
@@ -138,6 +139,7 @@ export function TablaConceptos({ tarifario, conceptos, recargos }: { tarifario: 
                 <td className="px-2 py-1 text-center"><Casilla checked={f.aplica_recargos} onChange={(e) => guardar(f._clave, { aplica_recargos: e.target.checked })} /></td>
                 <td className="px-2 py-1 text-center"><Casilla checked={f.aplica_iva} onChange={(e) => guardar(f._clave, { aplica_iva: e.target.checked })} /></td>
                 <td className="num px-2 py-1 text-right font-medium whitespace-nowrap">{f.pendiente ? <span className="text-amber-700">falta monto</span> : formatoMoneda(venta(f), f.moneda)}</td>
+                <td className="px-2 py-1 text-center"><Casilla checked={f.editable_por_todos} onChange={(e) => guardar(f._clave, { editable_por_todos: e.target.checked })} /></td>
                 <td className="px-2 py-1 text-center"><Casilla checked={f.pendiente} onChange={(e) => guardar(f._clave, { pendiente: e.target.checked })} /></td>
                 <td className="px-2 py-1 text-right whitespace-nowrap">
                   <span className="mr-1 inline-block w-14 text-right text-[11px] text-muted-foreground">{f._estado === "guardando" ? "…" : f._estado === "guardado" ? "Guardado" : ""}</span>

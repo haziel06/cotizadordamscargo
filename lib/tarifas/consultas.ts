@@ -94,11 +94,18 @@ export async function catalogoParaCotizar(opciones: { ocultarCostos?: boolean; r
   };
 }
 
-/** Sustituye costo/margen por la venta unitaria como precio fijo. Sirve para conceptos y rutas. */
-function soloVenta<T extends { tipo_margen: TipoMargen; valor_margen: number; aplica_recargos: boolean }>(
+/**
+ * Sustituye costo/margen por la venta unitaria como precio fijo. Sirve para conceptos y rutas.
+ * Si el concepto tiene mínimo de proveedor (ej. "mínimo 80 lb"), lo convertimos también a su
+ * equivalente en venta, para que el mínimo se siga respetando aunque el usuario normal ya no
+ * vea costo ni margen (ventaLinea también aplica el mínimo al precio fijo).
+ */
+function soloVenta<T extends { tipo_margen: TipoMargen; valor_margen: number; aplica_recargos: boolean; minimo?: number | null }>(
   x: T, costo: number, categoria: Categoria, moneda: Moneda, r: Recargos,
 ): T {
-  const venta = ventaLinea({ nombre: "", categoria, moneda, cantidad: 1, costo_unitario: costo, tipo_margen: x.tipo_margen, valor_margen: Number(x.valor_margen), lleva_iva: false, aplica_recargos: x.aplica_recargos }, r);
-  return { ...x, costo: 0, tipo_margen: "precio_fijo", valor_margen: venta, aplica_recargos: false };
+  const base = { nombre: "", categoria, moneda, cantidad: 1, costo_unitario: costo, tipo_margen: x.tipo_margen, valor_margen: Number(x.valor_margen), lleva_iva: false, aplica_recargos: x.aplica_recargos };
+  const venta = ventaLinea(base, r);
+  const minimoVenta = x.minimo != null ? ventaLinea({ ...base, costo_unitario: Number(x.minimo) }, r) : null;
+  return { ...x, costo: 0, tipo_margen: "precio_fijo", valor_margen: venta, aplica_recargos: false, minimo: minimoVenta };
 }
 export type Catalogo = Awaited<ReturnType<typeof catalogoParaCotizar>>;

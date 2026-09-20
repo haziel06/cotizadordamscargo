@@ -1,7 +1,7 @@
 "use client";
 import { Minus, Plus } from "lucide-react";
 import { Entrada } from "@/components/Campos";
-import { costoBase, margenDesdeVenta, redondear, ventaLinea } from "@/lib/calculo/linea";
+import { costoBase, margenDesdeVenta, redondear, ventaUnitariaLista } from "@/lib/calculo/linea";
 import type { LineaCalculo, Recargos } from "@/lib/calculo/tipos";
 import { formatoMoneda } from "@/lib/calculo/formato";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,7 @@ interface Props {
  * - Mover el % o el monto vuelve a margen por porcentaje / monto fijo.
  */
 export function ControlMargen({ linea, recargos, onChange, compacto }: Props) {
-  const unitaria = ventaLinea({ ...linea, cantidad: 1 }, recargos);
+  const unitaria = ventaUnitariaLista(linea, recargos);
   const base = costoBase(linea, recargos);
   const { pct, monto } = margenDesdeVenta(linea, unitaria, recargos);
   const sinCosto = linea.costo_unitario <= 0;

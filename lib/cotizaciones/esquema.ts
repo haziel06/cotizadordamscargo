@@ -35,6 +35,10 @@ export type LineaEditable = z.infer<typeof esquemaLinea> & {
   seccion?: string;
   /** true cuando alguien escribió la cantidad a mano: deja de seguir al peso/volumen de la carga. */
   cantidad_manual?: boolean;
+  /** Mínimo facturable del proveedor (ya en términos de venta si el usuario no ve costo). No se guarda: se recalcula desde el concepto. */
+  minimo?: number | null;
+  /** El concepto permite que cualquier usuario (no solo admin) ajuste el precio de venta final. */
+  editable_por_todos?: boolean;
 };
 
 export const esquemaDescuento = z.object({
@@ -64,7 +68,7 @@ export const esquemaCabecera = z.object({
   consignatario: textoOpcional.default(null),
   direccion_entrega: textoOpcional.default(null),
   fuera_perimetro: z.boolean().default(false),
-  segmento_courier: z.enum(["ticket", "consolidado", "documentos"]).nullable().default(null),
+  segmento_courier: z.enum(["ticket", "consolidado", "documentos", "compras_internet"]).nullable().default(null),
   valor_mercaderia: numOpcional,
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
   dias_vigencia: z.coerce.number().int().min(1).max(365),
@@ -98,7 +102,7 @@ export interface CabeceraForm {
   consignatario: string;
   direccion_entrega: string;
   fuera_perimetro: boolean;
-  segmento_courier: "ticket" | "consolidado" | "documentos" | null;
+  segmento_courier: "ticket" | "consolidado" | "documentos" | "compras_internet" | null;
   valor_mercaderia: number | string;
   fecha: string;
   dias_vigencia: number | string;

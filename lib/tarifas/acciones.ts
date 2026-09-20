@@ -102,6 +102,8 @@ const esquemaConcepto = z.object({
   notas: texto,
   /** Servicios a los que aplica; vacío = todos. */
   servicios: z.array(z.enum(["maritimo_fcl", "maritimo_lcl", "aereo", "courier", "terrestre", "aduanas"])).default([]),
+  /** Cualquier usuario (no solo admin) puede ajustar el precio de venta final, sin ver costo ni margen. */
+  editable_por_todos: z.boolean().default(false),
 });
 export type DatosConcepto = z.infer<typeof esquemaConcepto>;
 

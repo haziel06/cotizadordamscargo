@@ -38,9 +38,13 @@ async function reconstruirLineasVendedor(supabase: Awaited<ReturnType<typeof cre
       : c
         ? { costo_unitario: Number(c.costo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen), aplica_recargos: c.aplica_recargos, cuenta_ajena: c.cuenta_ajena, lleva_iva: c.aplica_iva }
         : { costo_unitario: Number(r!.costo ?? 0), tipo_margen: r!.tipo_margen, valor_margen: Number(r!.valor_margen), aplica_recargos: r!.aplica_recargos, cuenta_ajena: false, lleva_iva: true };
+    // Conceptos marcados "cualquiera puede ajustar el precio": el vendedor puede escribir un precio
+    // final distinto, pero nunca el costo ni la fórmula (esas siempre vienen del concepto real).
+    const editable = Boolean(c?.editable_por_todos);
     salida.push({
       ...l,
       ...base,
+      ...(editable && l.tipo_margen === "precio_fijo" ? { tipo_margen: "precio_fijo" as const, valor_margen: l.valor_margen } : {}),
       // El monto de un pago a tercero (ej. almacenaje) sí lo puede escribir el vendedor.
       ...(base.cuenta_ajena ? { tipo_margen: "precio_fijo" as const, valor_margen: l.valor_margen, costo_unitario: 0, aplica_recargos: false } : {}),
     });

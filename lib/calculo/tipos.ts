@@ -19,6 +19,9 @@ export interface LineaCalculo {
   aplica_recargos?: boolean;
   /** Pago a un tercero (almacenaje, impuestos) que el cliente cubre aparte: sin margen, fuera de los totales. */
   cuenta_ajena?: boolean;
+  /** Mínimo facturable en la unidad del proveedor (ej. "mínimo 80 lb" ya expresado como costo: 80 × $2.15).
+   * Si costo_unitario × cantidad no lo alcanza, se cobra como si fuera este monto. Solo aplica a tipo "porcentaje". */
+  minimo?: number | null;
 }
 
 /** Peso a partir del cual la carga aérea se marca como sobrepeso. */

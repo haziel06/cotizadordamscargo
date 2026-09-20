@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Casilla, Entrada, Selector } from "@/components/Campos";
 import { SECCIONES, conceptoAplica, infoSeccion, textoUnidad, type DefServicio } from "@/lib/etiquetas";
-import { ventaLinea } from "@/lib/calculo/linea";
+import { ventaLinea, ventaUnitariaLista } from "@/lib/calculo/linea";
 import { formatoMoneda, formatoFecha } from "@/lib/calculo/formato";
 import type { LineaEditable } from "@/lib/cotizaciones/esquema";
 import type { Catalogo } from "@/lib/tarifas/consultas";
@@ -45,6 +45,34 @@ const textoVia = (via: string | null) => {
 const LB_POR_KG = 2.20462;
 const SIGUEN_MEDIDAS: Unidad[] = ["kg", "libra", "cbm", "pie_cubico"];
 
+/**
+ * Precio de venta que puede editar un usuario normal en un concepto marcado "cualquiera puede
+ * ajustar" (ej. Trámite aduanal, Courier Plus, Entrega Local). Nunca se le muestra costo ni %:
+ * solo el precio final por unidad. Al confirmar, la línea pasa a "precio fijo" con ese monto.
+ */
+function PrecioVentaEditable({ valor, moneda, nombre, onConfirmar }: { valor: number; moneda: Moneda; nombre: string; onConfirmar: (nuevo: number) => void }) {
+  const [texto, setTexto] = useState(String(valor));
+  const [valorVisto, setValorVisto] = useState(valor);
+  if (valor !== valorVisto) {
+    // El precio cambió desde afuera (ej. otro campo recalculó la línea): sincroniza el texto sin efecto.
+    setValorVisto(valor);
+    setTexto(String(valor));
+  }
+  const confirmarCambio = () => {
+    const nuevo = Number(texto);
+    if (!Number.isFinite(nuevo) || nuevo < 0) { setTexto(String(valor)); return; }
+    if (redondearDos(nuevo) === redondearDos(valor)) { setTexto(String(valor)); return; }
+    const ok = confirm(`Vas a cambiar el precio de ${formatoMoneda(valor, moneda)} a ${formatoMoneda(nuevo, moneda)} en "${nombre}". ¿Confirmas?`);
+    if (ok) onConfirmar(nuevo);
+    else setTexto(String(valor));
+  };
+  return (
+    <Entrada type="number" step="0.01" min={0} value={texto} onChange={(e) => setTexto(e.target.value)}
+      onBlur={confirmarCambio} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} className="h-7 w-28 text-xs font-semibold" />
+  );
+}
+const redondearDos = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
 export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin }: Props) {
   const conceptosAplicables = useMemo(() => catalogo.conceptos.filter((c) => conceptoAplica(c.servicios, tipos)), [catalogo.conceptos, tipos]);
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>(() => Object.fromEntries(servicio.secciones.map((s, i) => [s, i < 2])));
@@ -80,6 +108,7 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
       proveedor_nombre: c.proveedor_id ? (provNombre.get(c.proveedor_id) ?? null) : null,
       ruta: t?.origen && t?.destino && t.seccion !== "gastos_locales" ? `${t.origen} → ${t.destino}` : null,
       unidad: c.unidad, pendiente: c.pendiente, seccion: c.seccion,
+      minimo: c.minimo == null ? null : Number(c.minimo), editable_por_todos: c.editable_por_todos,
     };
   };
   const agregarConcepto = (c: Concepto) => onChange((ls) => [...ls, lineaDesdeConcepto(c)]);
@@ -95,6 +124,7 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
         cantidad: cantidadPara(r.unidad), costo_unitario: Number(r.costo ?? 0), tipo_margen: r.tipo_margen, valor_margen: Number(r.valor_margen),
         lleva_iva: true, aplica_recargos: r.aplica_recargos, cuenta_ajena: false, nota: [textoVia(r.via), r.transito ? `Tránsito ${r.transito} días` : null].filter(Boolean).join(" · ") || null,
         nota_visible: true, proveedor_nombre: prov ?? null, ruta: `${r.origen} → ${r.destino}`, unidad: r.unidad, pendiente: r.costo == null, seccion: t?.seccion ?? "flete_maritimo",
+        minimo: r.minimo == null ? null : Number(r.minimo),
       },
     ]);
   };
@@ -154,9 +184,14 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
   // Courier consolidado (compras < $1,000) no lleva trámite aduanero ni pagos a terceros: esas
   // secciones solo aparecen en Ticket. Con "Mostrar todas" se ven igual, por si hace falta.
   const soloConsolidado = tipos.length === 1 && tipos[0] === "courier" && segmentoCourier === "consolidado";
+  const esComprasInternet = tipos.length === 1 && tipos[0] === "courier" && segmentoCourier === "compras_internet";
   const secciones = verTodas
     ? SECCIONES.map((s) => s.valor)
-    : servicio.secciones.filter((x) => !(soloConsolidado && (x === "documentacion" || x === "gastos_ajenos")));
+    : servicio.secciones.filter((x) => {
+        if (x === "compras_internet") return esComprasInternet;
+        if (soloConsolidado && (x === "documentacion" || x === "gastos_ajenos")) return false;
+        return true;
+      });
   /** Sección donde se muestra una línea: la suya si está visible; si no, la primera visible de su bloque. */
   const seccionDe = (l: LineaEditable) => {
     if (l.seccion && secciones.includes(l.seccion)) return l.seccion;
@@ -329,9 +364,15 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                                 </label>
                               ) : editaPrecio ? (
                                 <ControlMargen linea={l} recargos={recargos} onChange={(c) => editar(l._clave, c)} compacto />
+                              ) : l.editable_por_todos ? (
+                                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  Precio de venta (por {l.unidad ? textoUnidad(l.unidad as Unidad).replace("por ", "") : "unidad"})
+                                  <PrecioVentaEditable valor={ventaUnitariaLista(l, recargos)} moneda={l.moneda as Moneda} nombre={l.nombre}
+                                    onConfirmar={(nuevo) => editar(l._clave, { tipo_margen: "precio_fijo", valor_margen: nuevo })} />
+                                </label>
                               ) : (
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                  <Lock className="size-3" /> Precio unitario {formatoMoneda(ventaLinea({ ...l, cantidad: 1 }, recargos), l.moneda as Moneda)} · lo fija el administrador.
+                                  <Lock className="size-3" /> Precio unitario {formatoMoneda(ventaUnitariaLista(l, recargos), l.moneda as Moneda)} · lo fija el administrador.
                                 </div>
                               )}
                             </div>

@@ -117,7 +117,7 @@ export const SERVICIOS: DefServicio[] = [
   },
   {
     valor: "courier", grupo: "Aéreo", texto: "Courier", descripcion: "Ticket o consolidado, por libra", ejemplo: "Miami → Guatemala, 25 lb",
-    secciones: ["courier", "documentacion", "entrega_domicilio", "gastos_ajenos", "gastos_locales"],
+    secciones: ["courier", "compras_internet", "documentacion", "entrega_domicilio", "gastos_ajenos", "gastos_locales"],
     campos: ["libras", "kg", "bultos", "valor_mercaderia", "entrega"],
     tiposCarga: ["Courier", "Carga express aérea"],
   },
@@ -158,9 +158,10 @@ export function servicioCombinado(tipos: TipoServicio[]): DefServicio {
 }
 
 /** Courier se divide en tres segmentos; el trabajo fuerte está en ticket y consolidado. */
-export const SEGMENTOS_COURIER: { valor: "ticket" | "consolidado" | "documentos"; texto: string; descripcion: string }[] = [
+export const SEGMENTOS_COURIER: { valor: "ticket" | "consolidado" | "documentos" | "compras_internet"; texto: string; descripcion: string }[] = [
   { valor: "consolidado", texto: "Consolidado", descripcion: "Compras tipo Amazon, menos de $1,000. Solo se cobra la libra." },
   { valor: "ticket", texto: "Ticket", descripcion: "Supera $1,000 o requiere póliza: libra + trámite aduanero + entrega. Almacenaje va aparte." },
+  { valor: "compras_internet", texto: "Compras por internet", descripcion: "Nosotros compramos por el cliente (Amazon, tiendas). Comisión por tramos + flete y seguro aparte." },
   { valor: "documentos", texto: "Documentos", descripcion: "Sobres y documentos sin valor comercial." },
 ];
 export const LIMITE_TICKET_USD = 1000;
@@ -211,5 +212,6 @@ export const SECCIONES: { valor: string; texto: string; categoria: Categoria; mo
   { valor: "entrega_domicilio", texto: "Entrega a domicilio", categoria: "local", moneda: "USD", descripcion: "Por rango de peso" },
   { valor: "almacenadora", texto: "Puerto / almacenadora", categoria: "local", moneda: "GTQ", descripcion: "Manejo, almacenaje y cargos de puerto o almacenadora" },
   { valor: "gastos_ajenos", texto: "Gastos por cuenta ajena", categoria: "local", moneda: "GTQ", descripcion: "Pagos a terceros (Combex, impuestos): salen aparte, sin margen" },
+  { valor: "compras_internet", texto: "Compras por internet", categoria: "internacional", moneda: "USD", descripcion: "Comisión de TACSA por comprar en tu nombre, según el valor de la compra" },
 ];
 export const infoSeccion = (v: string) => SECCIONES.find((s) => s.valor === v) ?? { valor: v, texto: v, categoria: "local" as Categoria, moneda: "GTQ" as Moneda, descripcion: "" };

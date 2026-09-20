@@ -159,7 +159,10 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
     ...(esCourier
       ? [["Entrega", entregaTexto] as [string, string | null]]
       : ([["Incoterm", c.incoterm], ["Tránsito", c.transito], ["Routing", c.routing]] as [string, string | null][])),
-  ] as [string, string | null][]).filter(([k, v]) => !(esCourier && k === "Medidas" && !v));
+  ] as [string, string | null][]);
+  // Un apartado que no se llenó a la hora de cotizar no sale en el PDF: nada de filas en "—".
+  const datosIzqLlenos = datosIzq.filter(([, v]) => v);
+  const datosDerLlenos = datosDer.filter(([, v]) => v);
 
   return (
     <Document title={`Cotización ${c.numero}`} author={empresa.razon_social} language="es-GT">
@@ -217,21 +220,21 @@ export function DocumentoCotizacion({ cotizacion: c, lineas, config, perfil, fon
         {/* Filas emparejadas: si un lado tiene más renglones que el otro (ej. courier con "Entrega"
             de dos líneas), cada fila sigue compartiendo el mismo alto en vez de dos columnas sueltas. */}
         <View style={s.datos}>
-          {Array.from({ length: Math.max(datosIzq.length, datosDer.length) }).map((_, i, arr) => (
+          {Array.from({ length: Math.max(datosIzqLlenos.length, datosDerLlenos.length) }).map((_, i, arr) => (
             <View key={i} style={[s.filaDatos, i === arr.length - 1 ? { borderBottomWidth: 0 } : {}]}>
               <View style={[s.celdaDato, { borderRightWidth: 1, borderRightColor: LINEA }]}>
-                {datosIzq[i] && (
+                {datosIzqLlenos[i] && (
                   <>
-                    <Text style={s.datoEtiqueta}>{datosIzq[i][0]}</Text>
-                    <Text style={s.datoValor}>{datosIzq[i][1] || "—"}</Text>
+                    <Text style={s.datoEtiqueta}>{datosIzqLlenos[i][0]}</Text>
+                    <Text style={s.datoValor}>{datosIzqLlenos[i][1]}</Text>
                   </>
                 )}
               </View>
               <View style={s.celdaDato}>
-                {datosDer[i] && (
+                {datosDerLlenos[i] && (
                   <>
-                    <Text style={s.datoEtiqueta}>{datosDer[i][0]}</Text>
-                    <Text style={s.datoValor}>{datosDer[i][1] || "—"}</Text>
+                    <Text style={s.datoEtiqueta}>{datosDerLlenos[i][0]}</Text>
+                    <Text style={s.datoValor}>{datosDerLlenos[i][1]}</Text>
                   </>
                 )}
               </View>
