@@ -75,6 +75,7 @@ export function Dona({ datos, formato, centroTitulo }: {
   const visibles = datos.filter((d) => d.valor > 0);
   // Ángulo de inicio de cada porción = suma de las anteriores (sin variables mutables en el render).
   const inicios = visibles.map((_, i) => visibles.slice(0, i).reduce((s, x) => s + x.valor, 0));
+  const textoCentro = formato ? formato(total) : String(total);
   const arcos = visibles.map((d, i) => {
     const ini = (inicios[i] / total) * 2 * Math.PI - Math.PI / 2;
     const fin = ((inicios[i] + d.valor) / total) * 2 * Math.PI - Math.PI / 2;
@@ -95,8 +96,9 @@ export function Dona({ datos, formato, centroTitulo }: {
             <title>{`${a.etiqueta}: ${a.detalle ?? (formato ? formato(a.valor) : a.valor)} (${Math.round((a.valor / total) * 100)}%)`}</title>
           </path>
         ))}
-        <text x={C} y={C - 2} textAnchor="middle" fontSize={13} fontWeight={700} fill="#1F3864">{formato ? formato(total) : total}</text>
-        {centroTitulo && <text x={C} y={C + 8} textAnchor="middle" fontSize={5.5} fill="#6B7280">{centroTitulo}</text>}
+        {/* El texto del centro se encoge según su largo para no salirse del hueco (diámetro interior 52). */}
+        <text x={C} y={C - 1} textAnchor="middle" fontSize={Math.min(13, Math.max(5.5, 46 / (textoCentro.length * 0.58)))} fontWeight={700} fill="#1F3864">{textoCentro}</text>
+        {centroTitulo && <text x={C} y={C + 8} textAnchor="middle" fontSize={5} fill="#6B7280">{centroTitulo}</text>}
       </svg>
       <ul className="min-w-0 flex-1 space-y-1.5 text-sm">
         {arcos.map((a, i) => (
