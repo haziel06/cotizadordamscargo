@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpenText, FileText, LayoutDashboard, Settings, Users } from "lucide-react";
+import { BookOpenText, Bot, FileText, LayoutDashboard, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ENLACES = [
   { href: "/", texto: "Inicio", icono: LayoutDashboard, admin: false, exacto: true },
   { href: "/cotizaciones", texto: "Cotizaciones", icono: FileText, admin: false, exacto: false },
+  { href: "/asistente", texto: "Asistente", icono: Bot, admin: false, exacto: false },
   { href: "/tarifas", texto: "Base de tarifas", icono: BookOpenText, admin: true, exacto: false },
   { href: "/usuarios", texto: "Usuarios", icono: Users, admin: true, exacto: false },
   { href: "/configuracion", texto: "Configuración", icono: Settings, admin: false, exacto: false },

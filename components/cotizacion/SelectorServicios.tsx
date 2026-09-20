@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SERVICIOS, servicioCombinado } from "@/lib/etiquetas";
 import type { TipoServicio } from "@/lib/supabase/tipos";
 import { cn } from "@/lib/utils";
+import { DialogoCotizacionIA } from "./DialogoCotizacionIA";
 
 const ICONOS: Record<TipoServicio, React.ComponentType<{ className?: string }>> = {
   maritimo_fcl: Boxes,
@@ -30,6 +31,9 @@ export function SelectorServicios() {
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <DialogoCotizacionIA />
+      </div>
       {GRUPOS.map((g) => (
         <section key={g} className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g}</h2>

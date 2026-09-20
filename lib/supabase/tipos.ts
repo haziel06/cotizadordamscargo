@@ -80,6 +80,16 @@ type ProveedorRow = {
   moneda_default: Enums["moneda"]; notas: string | null; activo: boolean; created_at: string;
 };
 
+type AiUsageRow = {
+  id: string; user_id: string | null; proveedor: string; modelo: string;
+  tokens_entrada: number; tokens_salida: number; exito: boolean; tipo_error: string | null;
+  latencia_ms: number | null; created_at: string;
+};
+
+type IaConversacionRow = {
+  id: string; user_id: string; titulo: string; mensajes: Json; created_at: string; updated_at: string;
+};
+
 type Tabla<Row, Requeridas extends keyof Row> = {
   Row: Row;
   Insert: Pick<Row, Requeridas> & Partial<Omit<Row, Requeridas>>;
@@ -103,6 +113,8 @@ export type Database = {
       tarifarios: Tabla<TarifarioRow, "nombre" | "seccion">;
       tarifas_ruta: Tabla<TarifaRutaRow, "tarifario_id" | "origen">;
       tarifas_cliente: Tabla<TarifaClienteRow, "cliente_id" | "concepto_id" | "tipo_margen" | "valor_margen">;
+      ai_usage: Tabla<AiUsageRow, "proveedor" | "modelo" | "exito">;
+      ia_conversaciones: Tabla<IaConversacionRow, "user_id" | "titulo">;
     };
     Views: { [_ in never]: never };
     Functions: {

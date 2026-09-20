@@ -11,6 +11,7 @@ import type { Proveedor } from "@/lib/supabase/tipos";
 import type { TarifarioResumen } from "@/lib/tarifas/consultas";
 import { archivarTarifario, eliminarTarifario } from "@/lib/tarifas/acciones";
 import { DialogoTarifario } from "./DialogoTarifario";
+import { DialogoTarifarioIA } from "./DialogoTarifarioIA";
 import { Proveedores } from "./Proveedores";
 import { cn } from "@/lib/utils";
 
@@ -86,6 +87,7 @@ export function ListaTarifarios({ tarifarios, proveedores, mostrandoArchivados }
         </label>
         <div className="ml-auto flex gap-2">
           <Proveedores proveedores={proveedores} />
+          <DialogoTarifarioIA proveedores={proveedores} />
           <DialogoTarifario proveedores={proveedores}>
             <Button><Plus /> Nuevo tarifario</Button>
           </DialogoTarifario>
