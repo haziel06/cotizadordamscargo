@@ -1,9 +1,10 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Upload } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ZonaArchivo } from "@/components/ZonaArchivo";
 import { extraerCabeceraIA } from "@/lib/ia/cotizacionAcciones";
 
 /** Punto de partida con IA: describes el envío y/o subes un documento (pedido, factura, foto), y llega precargado al editor para que tú termines de elegir tarifas y confirmar. */
@@ -61,11 +62,7 @@ export function DialogoCotizacionIA() {
           value={descripcion}
           onChange={(e) => setDescripcion(e.target.value)}
         />
-        <label className="flex cursor-pointer items-center gap-2 rounded-lg border-2 border-dashed p-3 text-sm hover:bg-muted/50">
-          <Upload className="size-4 text-muted-foreground" />
-          {archivo ? archivo.name : "Adjuntar documento (opcional)"}
-          <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => setArchivo(e.target.files?.[0] ?? null)} />
-        </label>
+        <ZonaArchivo archivo={archivo} onArchivo={setArchivo} texto="Elige o arrastra el documento (opcional)" />
         {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setAbierto(false)}>Cancelar</Button>

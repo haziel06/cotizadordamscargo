@@ -73,33 +73,61 @@ export async function extraerJsonDeDocumento(opciones: {
   const partes: Record<string, unknown>[] = [{ text: opciones.instruccion }];
   if (opciones.archivoBase64 && opciones.mimeType) partes.push({ inline_data: { mime_type: opciones.mimeType, data: opciones.archivoBase64 } });
 
-  const control = new AbortController();
-  const corte = setTimeout(() => control.abort(), 60_000);
-  let resp: Response;
-  try {
-    resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: partes }],
-        generationConfig: { responseMimeType: "application/json", responseSchema: opciones.esquemaJson },
-      }),
-      signal: control.signal,
-    });
-  } catch (e) {
-    if ((e as Error).name === "AbortError") throw new ErrorProveedorIA(`${NOMBRE}: tiempo de espera agotado.`, "timeout", NOMBRE);
-    throw new ErrorProveedorIA(`${NOMBRE}: no se pudo conectar (${(e as Error).message}).`, "error_proveedor", NOMBRE);
-  } finally {
-    clearTimeout(corte);
-  }
+  const cuerpo = {
+    contents: [{ role: "user", parts: partes }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: opciones.esquemaJson,
+      maxOutputTokens: 8192,
+      // Sin esto, el modelo gasta su presupuesto de salida "pensando" antes de escribir el JSON:
+      // con documentos largos eso truncaba la lista a una sola fila, y a veces ni terminaba (503).
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  };
 
-  if (resp.status === 429) throw new ErrorProveedorIA(`${NOMBRE}: límite de uso alcanzado.`, "rate_limit", NOMBRE);
-  if (!resp.ok) {
-    const texto = await resp.text().catch(() => "");
-    throw new ErrorProveedorIA(`${NOMBRE}: respondió ${resp.status} ${texto.slice(0, 300)}`, "error_proveedor", NOMBRE);
+  const intentar = async (): Promise<Response> => {
+    const control = new AbortController();
+    const corte = setTimeout(() => control.abort(), 60_000);
+    try {
+      return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cuerpo),
+        signal: control.signal,
+      });
+    } catch (e) {
+      if ((e as Error).name === "AbortError") throw new ErrorProveedorIA(`${NOMBRE}: tiempo de espera agotado.`, "timeout", NOMBRE);
+      throw new ErrorProveedorIA(`${NOMBRE}: no se pudo conectar (${(e as Error).message}).`, "error_proveedor", NOMBRE);
+    } finally {
+      clearTimeout(corte);
+    }
+  };
+
+  // Gemini a veces responde 503 (saturado) o un JSON incompleto/mal formado de forma pasajera:
+  // hasta 2 intentos en total evita que el usuario tenga que darle "Continuar" varias veces a mano.
+  let ultimoError: ErrorProveedorIA | null = null;
+  for (let vuelta = 0; vuelta < 2; vuelta++) {
+    if (vuelta > 0) await new Promise((r) => setTimeout(r, 1500));
+    const resp = await intentar();
+    if (resp.status === 429) throw new ErrorProveedorIA(`${NOMBRE}: límite de uso alcanzado.`, "rate_limit", NOMBRE);
+    if (!resp.ok) {
+      const texto = await resp.text().catch(() => "");
+      ultimoError = new ErrorProveedorIA(`${NOMBRE}: respondió ${resp.status} ${texto.slice(0, 300)}`, "error_proveedor", NOMBRE);
+      continue;
+    }
+    const datos = await resp.json();
+    const texto = datos?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
+    if (!texto) {
+      ultimoError = new ErrorProveedorIA(`${NOMBRE}: no devolvió contenido (posible bloqueo de seguridad o documento demasiado largo).`, "error_proveedor", NOMBRE);
+      continue;
+    }
+    try {
+      JSON.parse(texto);
+    } catch {
+      ultimoError = new ErrorProveedorIA(`${NOMBRE}: devolvió un JSON incompleto.`, "error_proveedor", NOMBRE);
+      continue;
+    }
+    return texto;
   }
-  const datos = await resp.json();
-  const texto = datos?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
-  if (!texto) throw new ErrorProveedorIA(`${NOMBRE}: no devolvió contenido (posible bloqueo de seguridad).`, "error_proveedor", NOMBRE);
-  return texto;
+  throw ultimoError ?? new ErrorProveedorIA(`${NOMBRE}: no se pudo completar la solicitud.`, "error_proveedor", NOMBRE);
 }

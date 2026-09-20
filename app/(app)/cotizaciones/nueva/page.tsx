@@ -35,11 +35,22 @@ export default async function NuevaCotizacion(props: PageProps<"/cotizaciones/nu
   const txt = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const num = (k: string) => (txt(k) ? Number(txt(k)) : "");
   const desdeIA = sp.ia === "1";
+  const faltantes = desdeIA
+    ? [
+        !txt("cliente_nombre") && "cliente",
+        tipos.includes("courier") && !txt("kilogramos") && "peso (no arma las líneas solo sin esto)",
+        !tipos.includes("courier") && !txt("origen") && "origen",
+        !txt("destino") && "destino",
+      ].filter((x): x is string => !!x)
+    : [];
   return (
     <div className="space-y-3">
       {desdeIA && (
         <div className="rounded-lg border border-ambar/40 bg-ambar/10 px-3 py-2 text-sm text-marino">
           Datos precargados por IA a partir de lo que describiste o adjuntaste — revísalos antes de guardar.
+          {faltantes.length > 0 && (
+            <strong className="ml-1">Falta: {faltantes.join(", ")}.</strong>
+          )}
         </div>
       )}
       <EditorCotizacion
@@ -47,6 +58,7 @@ export default async function NuevaCotizacion(props: PageProps<"/cotizaciones/nu
         numero={null}
         esAdmin={sesion.esAdmin}
         puedeEditar
+        autoArmarIA={desdeIA}
         cabecera={{
           tipo_servicio: tipos[0],
           tipos_servicio: tipos,

@@ -212,3 +212,15 @@ export async function guardarProveedor(datos: DatosProveedor): Promise<Resultado
   revalidar();
   return { ok: true, id: data.id };
 }
+
+/** Borra el proveedor si nada lo referencia todavía; si ya tiene tarifarios/rutas, sugiere desactivarlo en su lugar. */
+export async function eliminarProveedor(id: string): Promise<Resultado> {
+  const supabase = await crearClienteServidor();
+  const { error } = await supabase.from("proveedores").delete().eq("id", id);
+  if (error) {
+    if (error.code === "23503") return { ok: false, error: "Ya tiene tarifarios o tarifas asociadas: desmarca «Activo» en vez de borrarlo." };
+    return { ok: false, error: "No se pudo borrar el proveedor." };
+  }
+  revalidar();
+  return { ok: true };
+}

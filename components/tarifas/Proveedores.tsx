@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Casilla, Entrada, Selector } from "@/components/Campos";
 import { TIPOS_PROVEEDOR } from "@/lib/etiquetas";
 import type { Proveedor } from "@/lib/supabase/tipos";
-import { guardarProveedor, type DatosProveedor } from "@/lib/tarifas/acciones";
+import { eliminarProveedor, guardarProveedor, type DatosProveedor } from "@/lib/tarifas/acciones";
 
 type Fila = DatosProveedor & { _clave: string };
 
@@ -40,21 +41,34 @@ export function Proveedores({ proveedores }: { proveedores: Proveedor[] }) {
     });
   };
 
+  /** Fila nueva sin guardar todavía: se quita sin tocar el servidor. Ya guardada: pide confirmar y borra. */
+  const quitar = (f: Fila) => {
+    if (!f.id) return setFilas((fs) => fs.filter((x) => x._clave !== f._clave));
+    if (!confirm(`¿Borrar el proveedor "${f.nombre}"? Si tiene tarifarios asociados, mejor desactívalo.`)) return;
+    setError(null);
+    startTransition(async () => {
+      const r = await eliminarProveedor(f.id!);
+      if (r.ok) setFilas((fs) => fs.filter((x) => x._clave !== f._clave));
+      else setError(r.error);
+    });
+  };
+
   return (
     <Dialog>
       <DialogTrigger render={<Button variant="outline" />}>Proveedores</DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Proveedores</DialogTitle>
         </DialogHeader>
         <table className="w-full text-sm">
           <thead className="text-left text-xs uppercase text-muted-foreground">
             <tr>
-              <th className="py-1 pr-2 font-medium">Nombre</th>
+              <th className="w-[38%] py-1 pr-2 font-medium">Nombre</th>
               <th className="py-1 pr-2 font-medium">Tipo</th>
               <th className="py-1 pr-2 font-medium">País</th>
               <th className="py-1 pr-2 font-medium">Moneda</th>
               <th className="py-1 text-center font-medium">Activo</th>
+              <th className="py-1"></th>
             </tr>
           </thead>
           <tbody>
@@ -66,7 +80,7 @@ export function Proveedores({ proveedores }: { proveedores: Proveedor[] }) {
                     onBlur={() => guardar(f._clave)} />
                 </td>
                 <td className="py-1 pr-2">
-                  <Selector value={f.tipo} onChange={(e) => guardar(f._clave, { tipo: e.target.value as Fila["tipo"] })}>
+                  <Selector value={f.tipo} className="min-w-32" onChange={(e) => guardar(f._clave, { tipo: e.target.value as Fila["tipo"] })}>
                     {TIPOS_PROVEEDOR.map((t) => <option key={t.valor} value={t.valor}>{t.texto}</option>)}
                   </Selector>
                 </td>
@@ -83,6 +97,11 @@ export function Proveedores({ proveedores }: { proveedores: Proveedor[] }) {
                 </td>
                 <td className="py-1 text-center">
                   <Casilla checked={f.activo} onChange={(e) => guardar(f._clave, { activo: e.target.checked })} />
+                </td>
+                <td className="py-1 pl-1">
+                  <Button type="button" variant="ghost" size="icon-sm" onClick={() => quitar(f)} title={f.id ? "Borrar proveedor" : "Quitar fila"}>
+                    <Trash2 className="size-3.5 text-destructive" />
+                  </Button>
                 </td>
               </tr>
             ))}

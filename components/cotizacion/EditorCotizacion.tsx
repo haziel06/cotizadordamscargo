@@ -34,6 +34,8 @@ export interface EditorProps {
   esAdmin: boolean;
   /** false = solo lectura (cotización de otra persona vista por un usuario normal). */
   puedeEditar: boolean;
+  /** Viene de "Crear con IA": si hay datos suficientes, arma las líneas de courier sin esperar el clic. */
+  autoArmarIA?: boolean;
 }
 
 const n = (v: unknown) => (v === "" || v == null ? null : Number(v));
@@ -133,6 +135,7 @@ export function EditorCotizacion(p: EditorProps) {
             margenDefault={p.defaults.margen_default}
             recargos={p.recargos}
             esAdmin={p.esAdmin}
+            autoArmar={p.autoArmarIA}
           />
 
           <Descuentos descuentos={cabecera.descuentos} onChange={(d) => cambiarCabecera({ descuentos: d })} />

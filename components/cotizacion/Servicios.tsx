@@ -30,6 +30,8 @@ interface Props {
   recargos: Recargos;
   /** Admin: ve costo y margen, mueve la barra, agrega líneas manuales. Usuario normal: solo elige y pone cantidades. */
   esAdmin: boolean;
+  /** Viene de "Crear con IA" con datos suficientes: arma las líneas de courier solo, sin esperar el clic. */
+  autoArmar?: boolean;
 }
 
 let contador = 0;
@@ -73,7 +75,7 @@ function PrecioVentaEditable({ valor, moneda, nombre, onConfirmar }: { valor: nu
 }
 const redondearDos = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin }: Props) {
+export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin, autoArmar }: Props) {
   const conceptosAplicables = useMemo(() => catalogo.conceptos.filter((c) => conceptoAplica(c.servicios, tipos)), [catalogo.conceptos, tipos]);
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>(() => Object.fromEntries(servicio.secciones.map((s, i) => [s, i < 2])));
   const [busquedaRuta, setBusquedaRuta] = useState<Record<string, string>>({});
@@ -167,6 +169,17 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
     onChange((ls) => [...ls, ...nuevas.filter((c) => !ls.some((l) => l.concepto_id === c.id)).map(lineaDesdeConcepto)]);
     setAbiertas((a) => ({ ...a, ...Object.fromEntries(nuevas.map((c) => [c.seccion, true])) }));
   };
+
+  // "Crear con IA" con peso ya conocido: arma las líneas de una vez, como si hubieran pulsado el botón.
+  // Si falta el peso (dato que la IA no pudo sacar del documento), no arma nada y queda el botón manual
+  // a la vista para que quien cotiza lo complete y lo pulse él mismo.
+  const autoArmadoHecho = useRef(false);
+  useEffect(() => {
+    if (!autoArmar || autoArmadoHecho.current || !segmentoCourier || lineas.length > 0 || !medidas.pesoCobrable) return;
+    autoArmadoHecho.current = true;
+    armarCourier(segmentoCourier);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoArmar, segmentoCourier, lineas.length, medidas.pesoCobrable]);
 
   const editar = (k: string, cambios: Partial<LineaEditable>) => onChange((ls) => ls.map((l) => (l._clave === k ? { ...l, ...cambios } : l)));
   const quitar = (k: string) => onChange((ls) => ls.filter((l) => l._clave !== k));

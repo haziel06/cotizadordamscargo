@@ -1,15 +1,16 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Trash2, Upload } from "lucide-react";
+import { Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Campo, Casilla, Entrada, Selector } from "@/components/Campos";
+import { ZonaArchivo } from "@/components/ZonaArchivo";
 import { SECCIONES, SERVICIOS, infoSeccion } from "@/lib/etiquetas";
 import type { Proveedor } from "@/lib/supabase/tipos";
 import { guardarTarifario, guardarConcepto, guardarRuta, type DatosTarifario } from "@/lib/tarifas/acciones";
 import { extraerTarifarioIA } from "@/lib/ia/tarifarioAcciones";
-import type { FilaExtraida } from "@/lib/ia/tarifarioIA";
+import { coincideProveedor, type FilaExtraida } from "@/lib/ia/tarifarioIA";
 
 interface Props { proveedores: Proveedor[] }
 
@@ -43,7 +44,7 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
       const r = await extraerTarifarioIA(form);
       if (!r.ok) return setError(r.error);
       const { datos } = r;
-      const proveedorMatch = datos.proveedor_sugerido ? proveedores.find((p) => p.nombre.toLowerCase().includes(datos.proveedor_sugerido.toLowerCase())) : undefined;
+      const proveedorMatch = coincideProveedor(datos.proveedor_sugerido, proveedores);
       const seccionSugerida = datos.servicio_sugerido ? SERVICIO_A_SECCION[datos.servicio_sugerido] ?? "flete_maritimo" : "flete_maritimo";
       setCab((x) => ({
         ...x,
@@ -52,6 +53,8 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
         servicio: datos.servicio_sugerido ?? x.servicio,
         seccion: seccionSugerida,
         moneda: datos.moneda_sugerida,
+        vigencia_desde: datos.vigencia_desde || x.vigencia_desde,
+        vigencia_hasta: datos.vigencia_hasta || x.vigencia_hasta,
       }));
       setFilas(datos.filas.map((f) => ({ ...f, incluir: true, tipo_margen: "porcentaje", valor_margen: 15, aplica_recargos: true })));
       setPaso("revisar");
@@ -104,11 +107,7 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
         {paso === "subir" && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">Sube la foto o el PDF de la hoja de tarifas. La IA solo lee y sugiere las filas — tú decides qué margen aplicarles y confirmas antes de guardar nada.</p>
-            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-8 text-center hover:bg-muted/50">
-              <Upload className="size-6 text-muted-foreground" />
-              <span className="text-sm">{archivo ? archivo.name : "Elige un PDF, PNG, JPG o WEBP (máx. 15 MB)"}</span>
-              <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => setArchivo(e.target.files?.[0] ?? null)} />
-            </label>
+            <ZonaArchivo archivo={archivo} onArchivo={setArchivo} texto="Elige o arrastra un PDF, PNG, JPG o WEBP (máx. 15 MB)" />
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setAbierto(false)}>Cancelar</Button>
@@ -139,6 +138,12 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
                 <Selector value={cab.seccion} onChange={(e) => { setCabecera("seccion", e.target.value); setCabecera("moneda", infoSeccion(e.target.value).moneda); }}>
                   {SECCIONES.map((s) => <option key={s.valor} value={s.valor}>{s.texto}</option>)}
                 </Selector>
+              </Campo>
+              <Campo etiqueta="Vigente desde">
+                <Entrada type="date" value={cab.vigencia_desde ?? ""} onChange={(e) => setCabecera("vigencia_desde", e.target.value)} />
+              </Campo>
+              <Campo etiqueta="Vigente hasta">
+                <Entrada type="date" value={cab.vigencia_hasta ?? ""} onChange={(e) => setCabecera("vigencia_hasta", e.target.value)} />
               </Campo>
             </div>
 
