@@ -7,6 +7,7 @@ import Link from "next/link";
 import { formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
 import type { Rol } from "@/lib/supabase/tipos";
 import { cn } from "@/lib/utils";
+import { DescargarResumenCompacto } from "@/components/configuracion/DescargarResumen";
 
 interface Fila { user_id: string; nombre: string; email: string; correo: string; cargo: string; rol: Rol; activo: boolean; created_at: string }
 type Resumen = { total: number; aceptadas: number; mes: number; monto_mes: number; aceptado_mes: number; utilidad_mes: number };
@@ -76,6 +77,7 @@ export function TablaUsuarios({ perfiles, miId, resumen }: { perfiles: Fila[]; m
                 <td className="px-3 py-2 text-right">
                   <div className="flex justify-end gap-1">
                     <Button size="xs" variant="ghost" nativeButton={false} render={<Link href={`/?usuario=${f.user_id}`} />}>Ver panel</Button>
+                    <DescargarResumenCompacto userId={f.user_id} />
                   {!soyYo && !esRaiz && (
                     <>
                       <Button size="xs" variant="outline" disabled={pendiente} onClick={() => cambiar(f, { rol: f.rol === "admin" ? "usuario" : "admin" })}>

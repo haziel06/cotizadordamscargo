@@ -72,3 +72,21 @@ export async function desactivarInvitacion(id: string, activo: boolean): Promise
   revalidatePath("/usuarios");
   return { ok: true };
 }
+
+const esquemaContrasena = z.object({ actual: z.string().min(1, "Escribe tu contraseña actual"), nueva: z.string().min(8, "Mínimo 8 caracteres") });
+/**
+ * Cambia la contraseña de quien tiene la sesión. Pide la actual y la comprueba con un
+ * inicio de sesión real (no basta con estar logueado) antes de dejar poner la nueva.
+ */
+export async function cambiarContrasenaPropia(datos: z.infer<typeof esquemaContrasena>): Promise<Resultado> {
+  const parsed = esquemaContrasena.safeParse(datos);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  const supabase = await crearClienteServidor();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user?.email) return { ok: false, error: "Sesión vencida." };
+  const { error: errorLogin } = await supabase.auth.signInWithPassword({ email: auth.user.email, password: parsed.data.actual });
+  if (errorLogin) return { ok: false, error: "Tu contraseña actual no es correcta." };
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.nueva });
+  if (error) return { ok: false, error: "No se pudo cambiar la contraseña." };
+  return { ok: true };
+}
