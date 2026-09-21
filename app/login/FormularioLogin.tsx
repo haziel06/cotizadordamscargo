@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { CampoClave } from "@/components/CampoClave";
 import { Label } from "@/components/ui/label";
 
-export function FormularioLogin({ inactivo }: { inactivo?: boolean }) {
+export function FormularioLogin({ inactivo, contrasenaActualizada }: { inactivo?: boolean; contrasenaActualizada?: boolean }) {
   const [estado, accion, pendiente] = useActionState(iniciarSesion, undefined);
   return (
     <form action={accion} className="space-y-4">
@@ -19,6 +19,7 @@ export function FormularioLogin({ inactivo }: { inactivo?: boolean }) {
         <Label htmlFor="clave">Contraseña</Label>
         <CampoClave id="clave" name="clave" autoComplete="current-password" required />
       </div>
+      {contrasenaActualizada && <p className="text-sm text-verde">Contraseña actualizada. Entra con la nueva.</p>}
       {inactivo && <p className="text-sm text-destructive">Tu cuenta está desactivada. Habla con el administrador.</p>}
       {estado?.error && <p className="text-sm text-destructive">{estado.error}</p>}
       <Button type="submit" className="w-full" size="lg" disabled={pendiente}>

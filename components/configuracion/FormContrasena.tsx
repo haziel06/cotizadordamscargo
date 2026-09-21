@@ -24,8 +24,10 @@ export function FormContrasena() {
     startTransition(async () => {
       const r = await cambiarContrasenaPropia({ actual, nueva });
       if (r.ok) {
-        setMsg({ ok: true, texto: "Contraseña actualizada." });
-        setActual(""); setNueva(""); setConfirmar("");
+        // Recarga completa a propósito (no router.push): la sesión ya se cerró en el servidor
+        // y hay que soltar cualquier estado de cliente en caché, no solo cambiar de pantalla.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+        window.location.href = "/login?actualizada=1";
       } else {
         setMsg({ ok: false, texto: r.error });
       }

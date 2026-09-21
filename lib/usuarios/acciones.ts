@@ -88,5 +88,8 @@ export async function cambiarContrasenaPropia(datos: z.infer<typeof esquemaContr
   if (errorLogin) return { ok: false, error: "Tu contraseña actual no es correcta." };
   const { error } = await supabase.auth.updateUser({ password: parsed.data.nueva });
   if (error) return { ok: false, error: "No se pudo cambiar la contraseña." };
+  // Se cierra la sesión actual a propósito: con la contraseña ya cambiada, toca volver a
+  // entrar con la nueva (mismo comportamiento que el Portal).
+  await supabase.auth.signOut();
   return { ok: true };
 }
