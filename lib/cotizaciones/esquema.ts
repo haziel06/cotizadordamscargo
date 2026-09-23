@@ -39,6 +39,8 @@ export type LineaEditable = z.infer<typeof esquemaLinea> & {
   minimo?: number | null;
   /** El concepto permite que cualquier usuario (no solo admin) ajuste el precio de venta final. */
   editable_por_todos?: boolean;
+  /** Esta línea usa una tarifa especial guardada para el cliente de la cotización (solo aviso visual). */
+  esTarifaCliente?: boolean;
 };
 
 export const esquemaDescuento = z.object({

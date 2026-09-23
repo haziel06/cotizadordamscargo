@@ -1,6 +1,7 @@
 "use client";
-import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { useState, useTransition } from "react";
+import { AlertTriangle, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Campo, Casilla, Entrada, Selector } from "@/components/Campos";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { INCOTERMS, LIMITE_TICKET_USD, SEGMENTOS_COURIER, type CampoCarga, type DefServicio } from "@/lib/etiquetas";
@@ -8,6 +9,7 @@ import { SOBREPESO_KG } from "@/lib/calculo/tipos";
 import type { CabeceraForm } from "@/lib/cotizaciones/esquema";
 import type { Cliente } from "@/lib/supabase/tipos";
 import type { GanadorPeso } from "@/lib/calculo/peso";
+import { guardarCliente } from "@/lib/clientes/acciones";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -26,7 +28,19 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
   const muestra = (campo: CampoCarga) => servicio.campos.includes(campo);
   const kg = Number(c.kilogramos) || 0;
   const [sugerencias, setSugerencias] = useState<Cliente[]>([]);
+  const [guardandoCliente, startGuardarCliente] = useTransition();
   const esCourier = c.tipos_servicio.includes("courier");
+
+  const guardarComoCliente = () => {
+    if (!c.cliente_nombre.trim()) return;
+    startGuardarCliente(async () => {
+      const r = await guardarCliente({
+        nombre: c.cliente_nombre, empresa: esCourier ? (c.consignatario || null) : null,
+        contacto_nombre: c.contacto || null, contacto_telefono: c.cliente_telefono || null, contacto_email: null, nit: null, notas: null, activo: true,
+      });
+      if (r.ok && r.id) onChange({ cliente_id: r.id });
+    });
+  };
 
   // Las libras se escriben libremente y se convierten a kg al vuelo. Se guarda el texto tal cual
   // se teclea para que "1", "1." o "12" no reboten por el redondeo (antes 1 lb → 0.45 kg → 0.99 lb).
@@ -97,7 +111,13 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
               ))}
             </ul>
           )}
-          {c.cliente_id && <span className="text-xs text-verde">Cliente registrado</span>}
+          {c.cliente_id ? (
+            <span className="text-xs text-verde">Cliente registrado</span>
+          ) : c.cliente_nombre.trim() ? (
+            <Button type="button" variant="ghost" size="xs" className="mt-1 h-auto p-0 text-xs font-normal text-primary" disabled={guardandoCliente} onClick={guardarComoCliente}>
+              <Save className="size-3" /> {guardandoCliente ? "Guardando…" : "Guardar como cliente (para tarifas especiales y futuras cotizaciones)"}
+            </Button>
+          ) : null}
         </Campo>
         {esCourier ? (
           <Campo etiqueta="Empresa (opcional)" className="md:col-span-3">

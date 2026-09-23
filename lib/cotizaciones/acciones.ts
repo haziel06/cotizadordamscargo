@@ -8,6 +8,7 @@ import { hoyIso } from "@/lib/calculo/formato";
 import { esquemaGuardar } from "./esquema";
 import { leerConfig } from "@/lib/config";
 import { sesionActual } from "@/lib/sesion";
+import { tarifasEspecialesCliente } from "@/lib/clientes/consultas";
 import type { Database } from "@/lib/supabase/tipos";
 import type { z as Z } from "zod";
 import type { esquemaLinea } from "./esquema";
@@ -19,13 +20,15 @@ type LineaEntrada = Z.infer<typeof esquemaLinea>;
  * Aquí se reconstruye cada línea desde la base (o desde la línea ya congelada si la cotización existía).
  * Las líneas manuales no se permiten; los pagos a terceros (cuenta ajena) sí aceptan el monto escrito.
  */
-async function reconstruirLineasVendedor(supabase: Awaited<ReturnType<typeof crearClienteServidor>>, id: string | null, lineas: LineaEntrada[]): Promise<LineaEntrada[] | string> {
+async function reconstruirLineasVendedor(supabase: Awaited<ReturnType<typeof crearClienteServidor>>, id: string | null, lineas: LineaEntrada[], clienteId: string | null): Promise<LineaEntrada[] | string> {
   const conceptoIds = [...new Set(lineas.map((l) => l.concepto_id).filter((x): x is string => !!x))];
   const rutaIds = [...new Set(lineas.map((l) => l.ruta_id).filter((x): x is string => !!x))];
-  const [{ data: conceptos }, { data: rutas }, { data: previas }] = await Promise.all([
+  const [{ data: conceptos }, { data: rutas }, { data: previas }, tarifasCliente] = await Promise.all([
     conceptoIds.length ? supabase.from("conceptos").select("*").in("id", conceptoIds) : Promise.resolve({ data: [] }),
     rutaIds.length ? supabase.from("tarifas_ruta").select("*").in("id", rutaIds) : Promise.resolve({ data: [] }),
     id ? supabase.from("cotizacion_lineas").select("*").eq("cotizacion_id", id) : Promise.resolve({ data: [] }),
+    // Siempre en términos de venta: esta función solo corre para usuario normal, nunca se le entrega costo/fórmula reales.
+    tarifasEspecialesCliente(clienteId, { ocultarCostos: true }),
   ]);
   const salida: LineaEntrada[] = [];
   for (const l of lineas) {
@@ -38,6 +41,10 @@ async function reconstruirLineasVendedor(supabase: Awaited<ReturnType<typeof cre
       : c
         ? { costo_unitario: Number(c.costo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen), aplica_recargos: c.aplica_recargos, cuenta_ajena: c.cuenta_ajena, lleva_iva: c.aplica_iva }
         : { costo_unitario: Number(r!.costo ?? 0), tipo_margen: r!.tipo_margen, valor_margen: Number(r!.valor_margen), aplica_recargos: r!.aplica_recargos, cuenta_ajena: false, lleva_iva: true };
+    // Tarifa especial guardada para este cliente en este concepto: pisa el margen/precio por
+    // defecto, aunque el usuario normal no pueda ver ni tocar la fórmula detrás.
+    const especial = c ? tarifasCliente.get(c.id) : undefined;
+    if (especial) { base.tipo_margen = especial.tipo_margen; base.valor_margen = especial.valor_margen; }
     // Conceptos marcados "cualquiera puede ajustar el precio": el vendedor puede escribir un precio
     // final distinto, pero nunca el costo ni la fórmula (esas siempre vienen del concepto real).
     const editable = Boolean(c?.editable_por_todos);
@@ -69,7 +76,7 @@ export async function guardarCotizacion(entrada: unknown): Promise<Resultado> {
   if (!sesion || !sesion.activo) return { ok: false, error: "Sesión vencida." };
   const supabase = await crearClienteServidor();
   if (!sesion.esAdmin) {
-    const r = await reconstruirLineasVendedor(supabase, id, lineas);
+    const r = await reconstruirLineasVendedor(supabase, id, lineas, cabecera.cliente_id ?? null);
     if (typeof r === "string") return { ok: false, error: r };
     lineas = r;
   }

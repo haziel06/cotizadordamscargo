@@ -32,6 +32,9 @@ interface Props {
   esAdmin: boolean;
   /** Viene de "Crear con IA" con datos suficientes: arma las líneas de courier solo, sin esperar el clic. */
   autoArmar?: boolean;
+  /** Tarifas especiales del cliente de esta cotización, por concepto_id (ya en términos de venta si no eres admin). */
+  tarifasCliente?: Record<string, { tipo_margen: TipoMargen; valor_margen: number }>;
+  clienteNombre?: string;
 }
 
 let contador = 0;
@@ -75,7 +78,7 @@ function PrecioVentaEditable({ valor, moneda, nombre, onConfirmar }: { valor: nu
 }
 const redondearDos = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin, autoArmar }: Props) {
+export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin, autoArmar, tarifasCliente, clienteNombre }: Props) {
   const conceptosAplicables = useMemo(() => catalogo.conceptos.filter((c) => conceptoAplica(c.servicios, tipos)), [catalogo.conceptos, tipos]);
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>(() => Object.fromEntries(servicio.secciones.map((s, i) => [s, i < 2])));
   const [busquedaRuta, setBusquedaRuta] = useState<Record<string, string>>({});
@@ -103,14 +106,19 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
 
   const lineaDesdeConcepto = (c: Concepto): LineaEditable => {
     const t = c.tarifario_id ? tarifarioPorId.get(c.tarifario_id) : undefined;
+    // Tarifa especial guardada para el cliente de esta cotización: pisa el margen/precio por
+    // defecto del concepto, con un aviso visual de que es un precio ya acordado con él.
+    const especial = tarifasCliente?.[c.id];
     return {
       _clave: clave(), concepto_id: c.id, ruta_id: null, nombre: c.nombre, categoria: c.categoria, moneda: c.moneda,
-      cantidad: cantidadPara(c.unidad), costo_unitario: Number(c.costo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen),
+      cantidad: cantidadPara(c.unidad), costo_unitario: Number(c.costo),
+      tipo_margen: especial?.tipo_margen ?? c.tipo_margen, valor_margen: especial ? especial.valor_margen : Number(c.valor_margen),
       lleva_iva: c.aplica_iva, aplica_recargos: c.aplica_recargos, cuenta_ajena: c.cuenta_ajena, nota: null, nota_visible: true,
       proveedor_nombre: c.proveedor_id ? (provNombre.get(c.proveedor_id) ?? null) : null,
       ruta: t?.origen && t?.destino && t.seccion !== "gastos_locales" ? `${t.origen} → ${t.destino}` : null,
       unidad: c.unidad, pendiente: c.pendiente, seccion: c.seccion,
       minimo: c.minimo == null ? null : Number(c.minimo), editable_por_todos: c.editable_por_todos,
+      esTarifaCliente: Boolean(especial),
     };
   };
   const agregarConcepto = (c: Concepto) => onChange((ls) => [...ls, lineaDesdeConcepto(c)]);
@@ -308,11 +316,15 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                           {cs.map((c) => {
-                            const ventaUnit = ventaLinea({ nombre: c.nombre, categoria: c.categoria, moneda: c.moneda, cantidad: 1, costo_unitario: Number(c.costo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen), lleva_iva: c.aplica_iva, aplica_recargos: c.aplica_recargos }, recargos);
+                            const especial = tarifasCliente?.[c.id];
+                            const ventaUnit = especial
+                              ? ventaLinea({ nombre: c.nombre, categoria: c.categoria, moneda: c.moneda, cantidad: 1, costo_unitario: Number(c.costo), tipo_margen: especial.tipo_margen, valor_margen: especial.valor_margen, lleva_iva: c.aplica_iva, aplica_recargos: c.aplica_recargos }, recargos)
+                              : ventaLinea({ nombre: c.nombre, categoria: c.categoria, moneda: c.moneda, cantidad: 1, costo_unitario: Number(c.costo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen), lleva_iva: c.aplica_iva, aplica_recargos: c.aplica_recargos }, recargos);
                             return (
                               <label key={c.id} className={cn("flex cursor-pointer items-center gap-1.5 text-sm", c.pendiente && "text-amber-800")} title={esAdmin ? (c.notas ?? undefined) : undefined}>
                                 <Casilla checked={marcados.has(c.id)} onChange={(e) => (e.target.checked ? agregarConcepto(c) : quitarConcepto(c.id))} />
                                 {c.nombre}
+                                {especial && <span className="rounded bg-ambar/20 px-1 py-0.5 text-[10px] font-medium text-amber-900" title={`Tarifa especial guardada para ${clienteNombre || "este cliente"}`}>especial</span>}
                                 <span className="text-xs text-muted-foreground">
                                   {c.pendiente && !c.cuenta_ajena ? "· falta monto" : ventaUnit > 0 ? `· ${formatoMoneda(ventaUnit, c.moneda)}${c.unidad !== "envio" ? ` ${textoUnidad(c.unidad)}` : ""}` : c.unidad !== "envio" ? `(${textoUnidad(c.unidad)})` : ""}
                                 </span>
@@ -345,6 +357,11 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                                 onChange={(e) => editar(l._clave, { nombre: e.target.value })} className="min-w-64 flex-1 font-medium" />
                               {l.proveedor_nombre && esAdmin && <span className="rounded bg-muted px-2 py-0.5 text-xs">{l.proveedor_nombre}</span>}
                               {l.cuenta_ajena && <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900">Pago a tercero · aparte</span>}
+                              {l.esTarifaCliente && (
+                                <span className="rounded bg-ambar/20 px-2 py-0.5 text-xs font-medium text-amber-900" title="Precio ya acordado con este cliente; puedes dejarlo o cambiarlo para esta cotización.">
+                                  Tarifa guardada para {clienteNombre || "este cliente"}
+                                </span>
+                              )}
                               <label className="flex items-center gap-1 text-xs text-muted-foreground">
                                 Cant.
                                 <Entrada type="number" step="0.001" min={0} value={l.cantidad} onChange={(e) => editar(l._clave, { cantidad: Number(e.target.value), cantidad_manual: true })} className="w-20" />

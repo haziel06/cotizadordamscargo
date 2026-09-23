@@ -100,7 +100,7 @@ export async function catalogoParaCotizar(opciones: { ocultarCostos?: boolean; r
  * equivalente en venta, para que el mínimo se siga respetando aunque el usuario normal ya no
  * vea costo ni margen (ventaLinea también aplica el mínimo al precio fijo).
  */
-function soloVenta<T extends { tipo_margen: TipoMargen; valor_margen: number; aplica_recargos: boolean; minimo?: number | null }>(
+export function soloVenta<T extends { tipo_margen: TipoMargen; valor_margen: number; aplica_recargos: boolean; minimo?: number | null }>(
   x: T, costo: number, categoria: Categoria, moneda: Moneda, r: Recargos,
 ): T {
   const base = { nombre: "", categoria, moneda, cantidad: 1, costo_unitario: costo, tipo_margen: x.tipo_margen, valor_margen: Number(x.valor_margen), lleva_iva: false, aplica_recargos: x.aplica_recargos };

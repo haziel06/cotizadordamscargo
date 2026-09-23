@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import type { Recargos } from "@/lib/calculo/tipos";
 import { pesoCobrable } from "@/lib/calculo/peso";
 import { alertasCotizacion } from "@/lib/calculo/alertas";
 import { guardarCotizacion } from "@/lib/cotizaciones/acciones";
+import { obtenerTarifasEspecialesAccion } from "@/lib/clientes/acciones";
 import type { CabeceraForm, LineaEditable } from "@/lib/cotizaciones/esquema";
 import type { Defaults, TextosLegales } from "@/lib/config";
 import type { Cliente } from "@/lib/supabase/tipos";
@@ -65,6 +66,17 @@ export function EditorCotizacion(p: EditorProps) {
     const ticket = sugiereTicket ? [{ tipo: "linea_cero" as const, mensaje: `La mercadería supera $${LIMITE_TICKET_USD.toLocaleString("en-US")}: normalmente va como Ticket (trámite aduanero + entrega)` }] : [];
     return [...base, ...pendientes, ...ticket];
   }, [totales.margen_pct, tipoCambio, lineas, cabecera.kilogramos, sugiereTicket]);
+
+  // Tarifas especiales del cliente elegido: se piden al servidor cada vez que cambia el cliente
+  // (no viven en el catálogo inicial porque dependen de a quién se le cotiza, no del servicio).
+  const [tarifasCliente, setTarifasCliente] = useState<Record<string, { tipo_margen: "porcentaje" | "monto_fijo" | "precio_fijo"; valor_margen: number }>>({});
+  const clienteIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = cabecera.cliente_id;
+    if (id === clienteIdRef.current) return;
+    clienteIdRef.current = id;
+    (id ? obtenerTarifasEspecialesAccion(id) : Promise.resolve({})).then(setTarifasCliente);
+  }, [cabecera.cliente_id]);
 
   const cambiarCabecera = (c: Partial<CabeceraForm>) => {
     setCabecera((x) => ({ ...x, ...c }));
@@ -136,6 +148,8 @@ export function EditorCotizacion(p: EditorProps) {
             recargos={p.recargos}
             esAdmin={p.esAdmin}
             autoArmar={p.autoArmarIA}
+            tarifasCliente={tarifasCliente}
+            clienteNombre={cabecera.cliente_nombre}
           />
 
           <Descuentos descuentos={cabecera.descuentos} onChange={(d) => cambiarCabecera({ descuentos: d })} />
