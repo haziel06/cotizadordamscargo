@@ -22,13 +22,12 @@ export interface MensajeIA {
 }
 
 /** Algo que el asistente produjo y que la interfaz debe mostrar como botón (hoy: una cotización lista con su PDF). */
-export interface AdjuntoChat {
-  tipo: "cotizacion";
-  id: string;
-  numero: string;
-  cliente: string;
-  total: string;
-}
+export interface OpcionChat { ref: string; etiqueta: string; detalle: string; precio: string }
+
+export type AdjuntoChat =
+  | { tipo: "cotizacion"; id: string; numero: string; cliente: string; total: string }
+  /** Tarjeta con opciones para elegir con un clic (ej. los fletes de cada proveedor): el clic manda la elección como mensaje. */
+  | { tipo: "opciones_flete"; titulo: string; opciones: OpcionChat[] };
 
 export interface ContextoHerramienta {
   sesion: Sesion;

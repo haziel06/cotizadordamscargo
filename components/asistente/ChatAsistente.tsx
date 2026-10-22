@@ -1,26 +1,28 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { Bot, Download, FileText, MessageSquarePlus, Send, Trash2, User } from "lucide-react";
-import type { AdjuntoChat } from "@/lib/ia/tipos";
+import { Bot, Download, FileText, MessageSquarePlus, Send, Ship, Sparkles, Trash2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import type { AdjuntoChat } from "@/lib/ia/tipos";
 import { preguntarIA } from "@/lib/ia/acciones";
 import { cargarConversacionIA, eliminarConversacionIA, guardarConversacionIA, listarConversacionesIA, type ResumenConversacion } from "@/lib/ia/acciones";
 import { TextoFormateado } from "./TextoFormateado";
 
 interface Mensaje { role: "user" | "assistant"; content: string; adjuntos?: AdjuntoChat[] }
 
-const EJEMPLO_COTIZAR = "Hazme una cotización courier consolidado de 25 kg para un cliente";
+const ATAJOS = [
+  { titulo: "Crear una cotización", texto: "Quiero hacer una cotización", ayuda: "Te voy preguntando lo que falta" },
+  { titulo: "Cotización de contenedor", texto: "Quiero cotizar un contenedor de 20 pies desde Shanghai para un cliente", ayuda: "Comparo fletes de cada proveedor" },
+  { titulo: "Courier de Miami", texto: "Cotización courier consolidado de 25 kg para un cliente", ayuda: "Armo libra, entrega y trámite" },
+  { titulo: "¿Qué cotizaciones llevo?", texto: "¿Cuántas cotizaciones llevo este mes?", ayuda: "Resumen de tu actividad" },
+];
 const PREGUNTAS_FRECUENTES = [
   "¿Cuántas cotizaciones llevo este mes?",
-  "¿Cuál fue la última cotización de un cliente?",
-  "¿Cuánto cuesta el trámite aduanal?",
   "¿Cuál es mi tasa de aceptación?",
-  "¿Qué proveedores tenemos registrados?",
   "¿Qué tarifarios están por vencer?",
-  EJEMPLO_COTIZAR,
+  "¿Qué proveedores tenemos registrados?",
 ];
 
 export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
@@ -36,6 +38,9 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
   useEffect(() => {
     refrescarLista();
   }, []);
+  useEffect(() => {
+    finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [mensajes.length, pendiente]);
 
   const enviar = (pregunta: string) => {
     const limpio = pregunta.trim();
@@ -57,7 +62,6 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
       } else {
         setError(r.error);
       }
-      setTimeout(() => finRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     });
   };
 
@@ -86,6 +90,8 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
     });
   };
 
+  const ultimo = mensajes.length - 1;
+
   return (
     <div className="flex h-[calc(100vh-160px)] gap-3">
       <aside className="hidden w-56 shrink-0 flex-col rounded-lg border bg-card p-2 md:flex">
@@ -108,15 +114,22 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
         <p className="mt-2 px-1 text-[11px] text-muted-foreground">Se guardan tus últimas 10; las más viejas se borran solas.</p>
       </aside>
 
-      <div className="flex flex-1 flex-col rounded-lg border bg-card">
+      <div className="flex flex-1 flex-col overflow-hidden rounded-lg border bg-card">
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           {mensajes.length === 0 && (
-            <div className="space-y-3 text-sm text-muted-foreground">
-              <p>Pregúntame sobre cotizaciones, clientes, tarifas o proveedores{esAdmin ? " — o cuántas lleva alguien del equipo" : ""}. También puedo crear una cotización y darte el PDF. Ejemplos:</p>
-              <div className="flex flex-wrap gap-2">
-                {PREGUNTAS_FRECUENTES.map((s) => (
-                  <button key={s} type="button" onClick={() => enviar(s)} className="rounded-full border px-3 py-1 text-xs hover:bg-muted">
-                    {s}
+            <div className="mx-auto max-w-2xl space-y-4 py-6">
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground"><Sparkles className="size-5" /></div>
+                <div>
+                  <h2 className="text-lg font-semibold text-primary">¿En qué te ayudo hoy?</h2>
+                  <p className="text-sm text-muted-foreground">Armo cotizaciones preguntándote lo necesario, comparo fletes y respondo sobre clientes, tarifas y proveedores{esAdmin ? ", y cuántas lleva cada quien del equipo" : ""}.</p>
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {ATAJOS.map((a) => (
+                  <button key={a.titulo} type="button" onClick={() => enviar(a.texto)} className="rounded-lg border p-3 text-left transition-colors hover:border-primary hover:bg-primary/5">
+                    <div className="text-sm font-semibold text-primary">{a.titulo}</div>
+                    <div className="text-xs text-muted-foreground">{a.ayuda}</div>
                   </button>
                 ))}
               </div>
@@ -127,25 +140,51 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
               <div className={cn("flex size-7 shrink-0 items-center justify-center rounded-full", m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted")}>
                 {m.role === "user" ? <User className="size-4" /> : <Bot className="size-4" />}
               </div>
-              <div className={cn("max-w-[80%] rounded-lg px-3 py-2 text-sm", m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted")}>
+              <div className={cn("max-w-[85%] space-y-2 rounded-lg px-3 py-2 text-sm", m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted")}>
                 {m.role === "assistant" ? <TextoFormateado texto={m.content} /> : m.content}
-                {m.adjuntos?.map((a) => (
-                  <div key={a.id} className="mt-2 flex flex-wrap items-center gap-2 rounded-md border bg-background p-2">
-                    <FileText className="size-4 text-primary" />
-                    <div className="mr-auto min-w-0 text-xs">
-                      <div className="font-medium">Cotización {a.numero}</div>
-                      <div className="truncate text-muted-foreground">{a.cliente} · {a.total}</div>
+                {m.adjuntos?.map((a, j) =>
+                  a.tipo === "cotizacion" ? (
+                    <div key={j} className="flex flex-wrap items-center gap-2 rounded-md border bg-background p-2 text-foreground">
+                      <FileText className="size-4 text-primary" />
+                      <div className="mr-auto min-w-0 text-xs">
+                        <div className="font-medium">Cotización {a.numero}</div>
+                        <div className="truncate text-muted-foreground">{a.cliente} · {a.total}</div>
+                      </div>
+                      <Button size="sm" nativeButton={false} render={<a href={`/api/cotizaciones/${a.id}/pdf`} download />}>
+                        <Download className="size-3.5" /> PDF
+                      </Button>
+                      <Button size="sm" variant="outline" nativeButton={false} render={<Link href={`/cotizaciones/${a.id}`} />}>Abrir</Button>
                     </div>
-                    <Button size="sm" nativeButton={false} render={<a href={`/api/cotizaciones/${a.id}/pdf`} download />}>
-                      <Download className="size-3.5" /> PDF
-                    </Button>
-                    <Button size="sm" variant="outline" nativeButton={false} render={<Link href={`/cotizaciones/${a.id}`} />}>Abrir</Button>
-                  </div>
-                ))}
+                  ) : (
+                    <div key={j} className="rounded-md border bg-background p-2 text-foreground">
+                      <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-primary"><Ship className="size-3.5" /> {a.titulo}</div>
+                      <ul className="divide-y">
+                        {a.opciones.map((o, k) => (
+                          <li key={o.ref} className="flex flex-wrap items-center gap-2 py-1.5 text-xs">
+                            <div className="mr-auto min-w-0">
+                              <div className="font-medium">{o.etiqueta}</div>
+                              <div className="text-muted-foreground">{o.detalle}</div>
+                            </div>
+                            <span className="num font-semibold">{o.precio}</span>
+                            {i === ultimo && (
+                              <Button size="xs" disabled={pendiente} onClick={() => enviar(`Elijo la opción ${k + 1}: ${o.detalle} · ${o.precio} (ref:${o.ref})`)}>Elegir</Button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ),
+                )}
               </div>
             </div>
           ))}
-          {pendiente && <p className="text-sm text-muted-foreground">Buscando información...</p>}
+          {pendiente && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex size-7 items-center justify-center rounded-full bg-muted"><Bot className="size-4" /></div>
+              <span className="flex gap-1"><span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" /><span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:120ms]" /><span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:240ms]" /></span>
+              Trabajando en eso…
+            </div>
+          )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <div ref={finRef} />
         </div>
@@ -174,7 +213,7 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
                 enviar(texto);
               }
             }}
-            placeholder="Escribe tu pregunta..."
+            placeholder="Escribe aquí… (Enter envía, Shift+Enter hace un salto de línea)"
             className="min-h-10 resize-none"
             rows={1}
           />

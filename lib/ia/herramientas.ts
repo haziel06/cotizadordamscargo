@@ -6,6 +6,9 @@ import { leerConfig } from "@/lib/config";
 import { ventaLinea } from "@/lib/calculo/linea";
 import { formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
 import { ETIQUETA_ESTADO } from "@/lib/tarifas/estado";
+import { listarClientes, obtenerCliente } from "@/lib/clientes/consultas";
+import { buscarFletes, textoTransito, textoVia } from "@/lib/cotizaciones/fletes";
+import { textoUnidad } from "@/lib/etiquetas";
 import { crearCotizacionDesdeChat, type DatosCotizacionChat } from "./crearCotizacionChat";
 import type { ContextoHerramienta, HerramientaIA } from "./tipos";
 
@@ -184,14 +187,86 @@ const cotizacionesPorUsuario: HerramientaIA = {
   },
 };
 
+const buscarFletesHerramienta: HerramientaIA = {
+  nombre: "buscarFletes",
+  descripcion: "Busca los fletes (marítimo o aéreo) desde un origen en TODOS los tarifarios vigentes, ya con el precio de venta, del más barato al más caro. Úsala ANTES de crear una cotización de contenedor, LCL o aéreo: en el chat aparece solo una tarjeta con las opciones para que el empleado elija con un clic. Cada opción trae un 'ref' que luego pasas a crearCotizacion.",
+  parametros: {
+    type: "object",
+    properties: {
+      origen: { type: "string", description: "Puerto o ciudad de origen, ej. 'Shanghai' o 'Xiamen, China'" },
+      servicio: { type: "string", enum: ["maritimo_fcl", "maritimo_lcl", "aereo"], description: "Tipo de flete" },
+      tipo_contenedor: { type: "string", description: "Solo FCL: 20GP, 40GP o 40HC" },
+    },
+    required: ["origen", "servicio"],
+  },
+  async ejecutar(args, { sesion, adjuntos }: ContextoHerramienta) {
+    const { recargos } = await leerConfig();
+    const catalogo = await catalogoParaCotizar({ ocultarCostos: !sesion.esAdmin, recargos });
+    const servicio = String(args.servicio ?? "");
+    const tarifarios = catalogo.tarifarios.filter((t) => !t.servicio || t.servicio === servicio);
+    const tipoCarga = servicio === "maritimo_fcl" && args.tipo_contenedor ? `FCL ${args.tipo_contenedor}` : null;
+    const opciones = buscarFletes({ rutas: catalogo.rutas, tarifarios, origen: String(args.origen ?? ""), tipoCarga, recargos, limite: 8 });
+    if (!opciones.length) {
+      const disponibles = [...new Set(catalogo.rutas.filter((r) => tarifarios.some((t) => t.id === r.tarifario_id)).map((r) => r.origen))].slice(0, 20);
+      return { encontrados: 0, mensaje: "No hay fletes vigentes para ese origen en ese servicio.", origenes_disponibles: disponibles, instruccion: "Díselo al empleado y ofrécele estos orígenes o que revise el nombre del puerto." };
+    }
+    const detalle = (o: (typeof opciones)[number]) =>
+      [o.tarifario.nombre, o.ruta.variante, textoVia(o.ruta.via), o.ruta.transito ? textoTransito(o.ruta.transito) : null].filter(Boolean).join(" · ");
+    const precio = (o: (typeof opciones)[number]) => `${formatoMoneda(o.venta, o.tarifario.moneda)} / ${textoUnidad(o.ruta.unidad).replace("por ", "")}`;
+    adjuntos.push({
+      tipo: "opciones_flete",
+      titulo: `Fletes desde ${args.origen}${tipoCarga ? ` · ${tipoCarga}` : ""}`,
+      opciones: opciones.map((o) => ({ ref: o.ruta.id.slice(0, 8), etiqueta: `${o.ruta.origen}${o.ruta.pais ? `, ${o.ruta.pais}` : ""}`, detalle: detalle(o), precio: precio(o) })),
+    });
+    return {
+      encontrados: opciones.length,
+      opciones: opciones.map((o, i) => ({
+        n: i + 1, ref: o.ruta.id.slice(0, 8), tarifario: o.tarifario.nombre, origen: o.ruta.origen, pais: o.ruta.pais, variante: o.ruta.variante,
+        via: textoVia(o.ruta.via), transito: o.ruta.transito ? textoTransito(o.ruta.transito) : null, precio_venta: precio(o),
+        vigente_hasta: catalogo.tarifarios.find((t) => t.id === o.ruta.tarifario_id)?.vigencia_hasta ?? null,
+        ...(sesion.esAdmin ? { costo: o.ruta.costo } : {}),
+      })),
+      instruccion: "Resume las opciones en una frase y pregunta cuál elige (las tarjetas con botones ya aparecen debajo). No crees la cotización hasta que elija.",
+    };
+  },
+};
+
+const buscarClientes: HerramientaIA = {
+  nombre: "buscarClientes",
+  descripcion: "Busca un cliente guardado por nombre y dice si tiene tarifas o precios especiales guardados y cuáles fueron sus últimas cotizaciones. Úsala al empezar una cotización para saber si el cliente ya existe y si tiene precio preferencial.",
+  parametros: { type: "object", properties: { q: { type: "string", description: "Nombre o parte del nombre del cliente" } }, required: ["q"] },
+  async ejecutar(args, { sesion }: ContextoHerramienta) {
+    const q = String(args.q ?? "").trim().toLowerCase();
+    if (q.length < 2) return { encontrados: 0 };
+    const clientes = (await listarClientes()).filter((c) => `${c.nombre} ${c.empresa ?? ""}`.toLowerCase().includes(q)).slice(0, 3);
+    const resultados = await Promise.all(clientes.map(async (c) => {
+      const detalle = await obtenerCliente(c.id);
+      const ultimas = await listarCotizaciones({ q: c.empresa || c.nombre, usuario: sesion.esAdmin ? undefined : sesion.userId, limite: 3 });
+      return {
+        nombre: c.empresa || c.nombre, contacto: c.contacto_nombre, telefono: c.contacto_telefono,
+        // Solo qué servicios tienen precio especial: la fórmula o el margen detrás es del administrador.
+        precios_especiales: (detalle?.tarifas ?? []).map((t) => (sesion.esAdmin ? `${t.concepto_nombre} (${t.tipo_margen} ${t.valor_margen})` : t.concepto_nombre)),
+        ultimas_cotizaciones: ultimas.map((x) => cotizacionParaVista(x, sesion.esAdmin)),
+      };
+    }));
+    return { encontrados: resultados.length, resultados };
+  },
+};
+
 const crearCotizacion: HerramientaIA = {
   nombre: "crearCotizacion",
-  descripcion: "Crea una cotización (queda como borrador) y deja listos los botones para descargar el PDF y abrirla en el editor. Solo úsala cuando el empleado pida crear/hacer/armar una cotización y ya tengas los datos obligatorios; si falta alguno, NO la llames: pregúntaselo. Los precios los calcula el sistema con la base de tarifas (y las tarifas especiales del cliente si está guardado): tú nunca pasas ni inventas precios. Para courier, arma sola las líneas (libra, entrega y, en ticket, trámite aduanero).",
+  descripcion: "Crea una cotización (queda como borrador) y deja listos los botones para descargar el PDF y abrirla en el editor. Solo úsala cuando el empleado pida crear/hacer/armar una cotización y YA tengas todo lo necesario y las elecciones confirmadas; si falta algo, NO la llames: pregúntaselo. Para contenedor, LCL o aéreo exige el flete elegido ('ruta_ref' de buscarFletes). Los precios los calcula el sistema con la base de tarifas (y las tarifas especiales del cliente si está guardado): tú nunca pasas ni inventas precios. Para courier, arma sola las líneas (libra, entrega y, en ticket, trámite aduanero). Nunca crea una cotización sin líneas.",
   parametros: {
     type: "object",
     properties: {
       cliente: { type: "string", description: "Nombre de la empresa o cliente (obligatorio)" },
       servicio: { type: "string", enum: ["courier", "aereo", "maritimo_lcl", "maritimo_fcl", "terrestre", "aduanas"], description: "Servicio principal (obligatorio)" },
+      ruta_ref: { type: "string", description: "El 'ref' (8 caracteres) del flete que eligió el empleado, tal como lo devolvió buscarFletes" },
+      tipo_carga: { type: "string", description: "Ej. 'FCL 20GP', 'FCL 40HC', 'Consolidado marítimo LCL'" },
+      incoterm: { type: "string", description: "Ej. FOB, EXW, CIF" },
+      cantidad: { type: "number", description: "Cuántos contenedores (por defecto 1)" },
+      cbm: { type: "number", description: "Metros cúbicos (LCL)" },
+      consignatario: { type: "string", description: "Quien recibe la carga" },
       segmento_courier: { type: "string", enum: ["ticket", "consolidado", "documentos", "compras_internet"], description: "Solo courier. Si no se sabe, pasa valor_mercaderia y el sistema decide (más de $1,000 = ticket)" },
       kilogramos: { type: "number", description: "Peso en kg (obligatorio en courier)" },
       valor_mercaderia: { type: "number", description: "Valor de la mercadería en USD" },
@@ -218,6 +293,6 @@ const crearCotizacion: HerramientaIA = {
 
 /** Herramientas disponibles según el rol: la de otros usuarios solo se le ofrece a un administrador. */
 export function herramientasDisponibles(esAdmin: boolean): HerramientaIA[] {
-  const base = [buscarCotizaciones, obtenerUltimaCotizacion, resumenMetricas, buscarTarifas, buscarProveedor, buscarTarifarios, crearCotizacion];
+  const base = [buscarCotizaciones, obtenerUltimaCotizacion, resumenMetricas, buscarTarifas, buscarProveedor, buscarTarifarios, buscarClientes, buscarFletesHerramienta, crearCotizacion];
   return esAdmin ? [...base, cotizacionesPorUsuario] : base;
 }

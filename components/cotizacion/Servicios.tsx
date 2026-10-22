@@ -9,6 +9,7 @@ import { ventaLinea, ventaUnitariaLista } from "@/lib/calculo/linea";
 import { formatoMoneda, formatoFecha } from "@/lib/calculo/formato";
 import type { LineaEditable } from "@/lib/cotizaciones/esquema";
 import { cantidadPorUnidad, conceptoAplicaAServicio, conceptosCourier } from "@/lib/cotizaciones/armado";
+import { buscarFletes, palabras } from "@/lib/cotizaciones/fletes";
 import type { Catalogo } from "@/lib/tarifas/consultas";
 import type { Concepto, SegmentoCourier, TarifaRuta, TipoServicio } from "@/lib/supabase/tipos";
 import type { Categoria, Moneda, Recargos, TipoMargen, Unidad } from "@/lib/calculo/tipos";
@@ -42,11 +43,6 @@ interface Props {
   /** Se avisa al agregar un flete para que la carga tome su tránsito y vía. */
   onRutaAgregada?: (r: TarifaRuta) => void;
 }
-
-const normalizar = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-const palabras = (s: string) => normalizar(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
-/** "40HQ" y "40HC" son el mismo contenedor: se igualan para comparar con el tipo de carga elegido. */
-const claveContenedor = (s: string) => normalizar(s).replace(/[^a-z0-9]/g, "").replace(/hq/g, "hc");
 
 let contador = 0;
 const clave = () => `l-${Date.now()}-${contador++}`;
@@ -118,18 +114,6 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
   const nombreTarifario = (tid: string) => (tid === "propio" ? "Propio · Dams Cargo" : (tarifarioPorId.get(tid)?.nombre ?? "Tarifario"));
 
   const palabrasOrigen = useMemo(() => palabras(origen ?? ""), [origen]);
-  const rutaCoincideOrigen = (r: TarifaRuta) => {
-    const h = normalizar(`${r.pais ?? ""} ${r.origen} ${r.via ?? ""}`);
-    return palabrasOrigen.every((p) => h.includes(p));
-  };
-  /** Si el tipo de carga es un contenedor (FCL 20GP…), solo las tarifas de ese tamaño; sin variante o sin tipo, todas. */
-  const varianteSirve = (r: TarifaRuta) => {
-    if (!r.variante || !tipoCarga) return true;
-    const v = claveContenedor(r.variante);
-    return !/^(20|40|45)/.test(v) || claveContenedor(tipoCarga).includes(v);
-  };
-  const ventaRuta = (r: TarifaRuta, moneda: Moneda) =>
-    ventaLinea({ nombre: "", categoria: "internacional", moneda, cantidad: 1, costo_unitario: Number(r.costo ?? 0), tipo_margen: r.tipo_margen, valor_margen: Number(r.valor_margen), lleva_iva: true, aplica_recargos: r.aplica_recargos }, recargos);
 
   /** Cantidad según la unidad del concepto (spec §7.2-B, ampliada con libras). */
   const cantidadPara = (u: Unidad) => cantidadPorUnidad(u, medidas.pesoCobrable, medidas.cbm);
@@ -311,12 +295,8 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
           const gruposVisibles = [...grupos.entries()].filter(([tid]) => !elegido || claveGrupo(tid) === elegido);
           // Comparador: los fletes de este origen en todos los tarifarios vigentes, de menor a mayor precio.
           const esFlete = sec === "flete_maritimo" || sec === "flete_aereo";
-          const comparables = esFlete && palabrasOrigen.length
-            ? rutasVisibles
-                .flatMap((t) => catalogo.rutas.filter((r) => r.tarifario_id === t.id && rutaCoincideOrigen(r) && varianteSirve(r)).map((r) => ({ r, t, venta: ventaRuta(r, t.moneda) })))
-                .filter((x) => x.venta > 0)
-                .sort((a, b) => a.venta - b.venta)
-                .slice(0, 10)
+          const comparables = esFlete
+            ? buscarFletes({ rutas: catalogo.rutas, tarifarios: rutasVisibles, origen: origen ?? "", tipoCarga, recargos }).map((x) => ({ r: x.ruta, t: x.tarifario, venta: x.venta }))
             : [];
           return (
             <section key={sec} className={cn("rounded-lg border", esAjena && "border-dashed")}>
