@@ -41,6 +41,8 @@ export type LineaEditable = z.infer<typeof esquemaLinea> & {
   editable_por_todos?: boolean;
   /** Esta línea usa una tarifa especial guardada para el cliente de la cotización (solo aviso visual). */
   esTarifaCliente?: boolean;
+  /** Esta línea repite el precio que el cliente tuvo en su última cotización (solo aviso visual). */
+  tarifaDeUltima?: boolean;
 };
 
 export const esquemaDescuento = z.object({

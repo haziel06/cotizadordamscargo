@@ -24,6 +24,8 @@ export function DialogoCliente({ cliente, children, onGuardado }: Props) {
     contacto_email: cliente?.contacto_email ?? null,
     nit: cliente?.nit ?? null,
     notas: cliente?.notas ?? null,
+    consignatario: cliente?.consignatario ?? null,
+    direccion: cliente?.direccion ?? null,
     activo: cliente?.activo ?? true,
   }));
   const set = <K extends keyof DatosCliente>(k: K, v: DatosCliente[K]) => setD((x) => ({ ...x, [k]: v }));
@@ -65,6 +67,12 @@ export function DialogoCliente({ cliente, children, onGuardado }: Props) {
           </Campo>
           <Campo etiqueta="Correo" className="md:col-span-2">
             <Entrada value={d.contacto_email ?? ""} onChange={(e) => set("contacto_email", e.target.value || null)} />
+          </Campo>
+          <Campo etiqueta="Consignatario habitual (quien recibe)" className="md:col-span-2">
+            <Entrada value={d.consignatario ?? ""} onChange={(e) => set("consignatario", e.target.value || null)} placeholder="Se copia a la cotización al elegir este cliente" />
+          </Campo>
+          <Campo etiqueta="Dirección de entrega habitual" className="md:col-span-2">
+            <Entrada value={d.direccion ?? ""} onChange={(e) => set("direccion", e.target.value || null)} />
           </Campo>
           <Campo etiqueta="Notas" className="md:col-span-2">
             <Entrada value={d.notas ?? ""} onChange={(e) => set("notas", e.target.value || null)} />

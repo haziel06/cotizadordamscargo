@@ -4,6 +4,9 @@ import { z } from "zod";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { sesionActual } from "@/lib/sesion";
 import { cotizacionesDeCliente, tarifasEspecialesCliente, type CotizacionDeCliente } from "./consultas";
+import { leerConfig } from "@/lib/config";
+import { ventaLinea } from "@/lib/calculo/linea";
+import type { TipoMargen } from "@/lib/calculo/tipos";
 
 export type Resultado = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -18,6 +21,8 @@ const esquemaCliente = z.object({
   contacto_email: texto,
   nit: texto,
   notas: texto,
+  consignatario: texto.default(null),
+  direccion: texto.default(null),
   activo: z.boolean().default(true),
 });
 export type DatosCliente = z.infer<typeof esquemaCliente>;
@@ -86,6 +91,57 @@ export async function historialClienteAccion(clienteId: string): Promise<Cotizac
   const sesion = await sesionActual();
   if (!sesion) return [];
   return cotizacionesDeCliente(clienteId, { usuario: sesion.esAdmin ? undefined : sesion.userId, limite: 5 });
+}
+
+export interface PrecioModificado {
+  concepto_id: string;
+  nombre: string;
+  moneda: "USD" | "GTQ";
+  /** Venta unitaria que tuvo en esa cotización y la que tendría hoy con la tarifa normal. */
+  precio_ultima: number;
+  precio_normal: number;
+  /** Fórmula para repetirlo: el administrador recibe la real; un usuario normal, siempre un precio fijo de venta. */
+  tipo_margen: TipoMargen;
+  valor_margen: number;
+}
+export interface UltimaCotizacion { id: string; numero: string; fecha: string; modificadas: PrecioModificado[] }
+
+/**
+ * Qué servicios se cotizaron con un precio distinto al normal en la última cotización del cliente (un precio negociado,
+ * un ajuste manual), para poder repetirlos con un clic. Un usuario normal nunca recibe costo ni margen: solo ventas.
+ */
+export async function preciosUltimaCotizacionAccion(clienteId: string): Promise<UltimaCotizacion | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(clienteId)) return null;
+  const sesion = await sesionActual();
+  if (!sesion) return null;
+  const [ultima] = await cotizacionesDeCliente(clienteId, { usuario: sesion.esAdmin ? undefined : sesion.userId, limite: 1 });
+  if (!ultima) return null;
+
+  const supabase = await crearClienteServidor();
+  const [{ data: lineas }, { recargos }] = await Promise.all([
+    supabase.from("cotizacion_lineas").select("concepto_id, categoria, moneda, costo_unitario, tipo_margen, valor_margen, aplica_recargos, cuenta_ajena").eq("cotizacion_id", ultima.id).not("concepto_id", "is", null),
+    leerConfig(),
+  ]);
+  const ids = [...new Set((lineas ?? []).map((l) => l.concepto_id).filter((x): x is string => !!x))];
+  const { data: conceptos } = ids.length ? await supabase.from("conceptos").select("id, nombre, categoria, moneda, costo, tipo_margen, valor_margen, aplica_recargos").in("id", ids) : { data: [] };
+
+  const modificadas: PrecioModificado[] = [];
+  for (const l of lineas ?? []) {
+    const c = (conceptos ?? []).find((x) => x.id === l.concepto_id);
+    if (!c || l.cuenta_ajena) continue;
+    const distinto = l.tipo_margen !== c.tipo_margen || Math.abs(Number(l.valor_margen) - Number(c.valor_margen)) > 0.005;
+    if (!distinto) continue;
+    const venta = (costo: number, tipo: TipoMargen, valor: number, recargosLinea: boolean) =>
+      ventaLinea({ nombre: "", categoria: c.categoria, moneda: c.moneda, cantidad: 1, costo_unitario: costo, tipo_margen: tipo, valor_margen: valor, lleva_iva: false, aplica_recargos: recargosLinea }, recargos);
+    const precioUltima = venta(Number(l.costo_unitario), l.tipo_margen, Number(l.valor_margen), l.aplica_recargos);
+    modificadas.push({
+      concepto_id: c.id, nombre: c.nombre, moneda: c.moneda, precio_ultima: precioUltima,
+      precio_normal: venta(Number(c.costo), c.tipo_margen, Number(c.valor_margen), c.aplica_recargos),
+      tipo_margen: sesion.esAdmin ? l.tipo_margen : "precio_fijo",
+      valor_margen: sesion.esAdmin ? Number(l.valor_margen) : precioUltima,
+    });
+  }
+  return { id: ultima.id, numero: ultima.numero, fecha: ultima.fecha, modificadas };
 }
 
 export async function eliminarTarifaCliente(id: string, clienteId: string): Promise<Resultado> {

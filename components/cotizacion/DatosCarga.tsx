@@ -10,7 +10,7 @@ import { SOBREPESO_KG } from "@/lib/calculo/tipos";
 import type { CabeceraForm } from "@/lib/cotizaciones/esquema";
 import type { Cliente } from "@/lib/supabase/tipos";
 import type { GanadorPeso } from "@/lib/calculo/peso";
-import { guardarCliente } from "@/lib/clientes/acciones";
+import { guardarCliente, type UltimaCotizacion, type PrecioModificado } from "@/lib/clientes/acciones";
 import type { CotizacionDeCliente } from "@/lib/clientes/consultas";
 import { clientesSimilares } from "@/lib/clientes/buscar";
 import { formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
@@ -25,14 +25,18 @@ interface Props {
   /** Puertos de origen que hay en los tarifarios vigentes (sugerencias al escribir el origen). */
   puertos?: string[];
   /** Del cliente guardado elegido: precios preferenciales y cotizaciones anteriores. */
-  infoCliente?: { nEspeciales: number; especiales: string[]; historial: CotizacionDeCliente[] } | null;
+  infoCliente?: { nEspeciales: number; especiales: string[]; historial: CotizacionDeCliente[]; ultima: UltimaCotizacion | null; preciosAplicados: boolean } | null;
+  /** Repite en esta cotización los precios modificados de la última del cliente. */
+  onUsarPrecios?: (p: PrecioModificado[]) => void;
+  /** Volver a la lista de clientes guardados. */
+  onCambiarCliente?: () => void;
 }
 
 const LB_POR_KG = 2.20462;
 const aLb = (kg: number) => Math.round(kg * LB_POR_KG * 100) / 100;
 const aKg = (lb: number) => Math.round((lb / LB_POR_KG) * 10000) / 10000;
 
-export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, puertos = [], infoCliente }: Props) {
+export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, puertos = [], infoCliente, onUsarPrecios, onCambiarCliente }: Props) {
   const muestra = (campo: CampoCarga) => servicio.campos.includes(campo);
   const kg = Number(c.kilogramos) || 0;
   const [sugerencias, setSugerencias] = useState<Cliente[]>([]);
@@ -44,7 +48,8 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, pu
     startGuardarCliente(async () => {
       const r = await guardarCliente({
         nombre: c.cliente_nombre, empresa: esCourier ? (c.consignatario || null) : null,
-        contacto_nombre: c.contacto || null, contacto_telefono: c.cliente_telefono || null, contacto_email: null, nit: null, notas: null, activo: true,
+        contacto_nombre: c.contacto || null, contacto_telefono: c.cliente_telefono || null, contacto_email: null, nit: null, notas: null,
+        consignatario: esCourier ? null : (c.consignatario || null), direccion: c.direccion_entrega || null, activo: true,
       });
       if (r.ok && r.id) onChange({ cliente_id: r.id });
     });
@@ -77,6 +82,8 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, pu
       cliente_id: k.id,
       contacto: c.contacto || k.contacto_nombre || (k.empresa ? k.nombre : "") || "",
       cliente_telefono: c.cliente_telefono || k.contacto_telefono || "",
+      consignatario: c.consignatario || k.consignatario || (esCourier ? (k.empresa ?? "") : ""),
+      direccion_entrega: c.direccion_entrega || k.direccion || "",
     });
     setSugerencias([]);
   };
@@ -122,7 +129,10 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, pu
           )}
           {c.cliente_id ? (
             <div className="mt-1.5 space-y-1 rounded-md border border-verde/40 bg-verde/5 p-2 text-xs">
-              <div className="font-medium text-verde">Cliente guardado</div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-verde">Cliente guardado</span>
+                {onCambiarCliente && <button type="button" className="text-primary underline" onClick={onCambiarCliente}>Cambiar cliente</button>}
+              </div>
               {infoCliente && infoCliente.nEspeciales > 0 ? (
                 <div className="text-amber-900">
                   <strong>Tiene precio preferencial</strong> en {infoCliente.nEspeciales} {infoCliente.nEspeciales === 1 ? "servicio" : "servicios"}
@@ -130,6 +140,21 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, pu
                 </div>
               ) : (
                 <div className="text-muted-foreground">Sin precios especiales: se usan las tarifas normales.</div>
+              )}
+              {infoCliente?.ultima && infoCliente.ultima.modificadas.length > 0 && (
+                <div className="rounded border border-amber-300 bg-amber-50 p-1.5 text-amber-950">
+                  <div className="font-medium">La última cotización ({infoCliente.ultima.numero}) tuvo precios distintos al normal:</div>
+                  <ul className="mt-0.5 space-y-0.5">
+                    {infoCliente.ultima.modificadas.map((m) => (
+                      <li key={m.concepto_id}>{m.nombre}: <strong>{formatoMoneda(m.precio_ultima, m.moneda)}</strong> <span className="text-amber-800/80">(normal {formatoMoneda(m.precio_normal, m.moneda)})</span></li>
+                    ))}
+                  </ul>
+                  {onUsarPrecios && (
+                    <Button type="button" size="xs" className="mt-1" disabled={infoCliente.preciosAplicados} onClick={() => onUsarPrecios(infoCliente.ultima!.modificadas)}>
+                      {infoCliente.preciosAplicados ? "Precios aplicados: se usan al elegir esos servicios" : "Repetir estos precios"}
+                    </Button>
+                  )}
+                </div>
               )}
               {infoCliente && infoCliente.historial.length > 0 ? (
                 <div>

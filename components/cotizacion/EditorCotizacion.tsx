@@ -9,7 +9,7 @@ import type { Recargos } from "@/lib/calculo/tipos";
 import { pesoCobrable } from "@/lib/calculo/peso";
 import { alertasCotizacion } from "@/lib/calculo/alertas";
 import { guardarCotizacion } from "@/lib/cotizaciones/acciones";
-import { historialClienteAccion, obtenerTarifasEspecialesAccion } from "@/lib/clientes/acciones";
+import { historialClienteAccion, obtenerTarifasEspecialesAccion, preciosUltimaCotizacionAccion, type PrecioModificado, type UltimaCotizacion } from "@/lib/clientes/acciones";
 import type { CotizacionDeCliente } from "@/lib/clientes/consultas";
 import type { CabeceraForm, LineaEditable } from "@/lib/cotizaciones/esquema";
 import type { Defaults, TextosLegales } from "@/lib/config";
@@ -21,6 +21,7 @@ import { Servicios } from "./Servicios";
 import { ResumenVivo } from "./ResumenVivo";
 import { Descuentos } from "./Descuentos";
 import { NotasCotizacion } from "./NotasCotizacion";
+import { ElegirCliente } from "./ElegirCliente";
 
 export interface EditorProps {
   id: string | null;
@@ -72,6 +73,10 @@ export function EditorCotizacion(p: EditorProps) {
   // (no viven en el catálogo inicial porque dependen de a quién se le cotiza, no del servicio).
   const [tarifasCliente, setTarifasCliente] = useState<Record<string, { tipo_margen: "porcentaje" | "monto_fijo" | "precio_fijo"; valor_margen: number }>>({});
   const [historialCliente, setHistorialCliente] = useState<CotizacionDeCliente[]>([]);
+  const [ultimaCotizacion, setUltimaCotizacion] = useState<UltimaCotizacion | null>(null);
+  const [conceptosUltima, setConceptosUltima] = useState<string[]>([]);
+  // Cotización nueva sin cliente todavía: primero se elige a quién se cotiza (o «Nuevo cliente»).
+  const [eligiendoCliente, setEligiendoCliente] = useState(() => !p.id && p.clientes.length > 0 && !p.cabecera.cliente_nombre.trim());
   const clienteIdRef = useRef<string | null>(null);
   useEffect(() => {
     const id = cabecera.cliente_id;
@@ -79,6 +84,8 @@ export function EditorCotizacion(p: EditorProps) {
     clienteIdRef.current = id;
     (id ? obtenerTarifasEspecialesAccion(id) : Promise.resolve({})).then(setTarifasCliente);
     (id ? historialClienteAccion(id) : Promise.resolve([])).then(setHistorialCliente);
+    (id ? preciosUltimaCotizacionAccion(id) : Promise.resolve(null)).then(setUltimaCotizacion);
+    setConceptosUltima([]);
   }, [cabecera.cliente_id]);
   const recargarTarifasCliente = () => {
     if (cabecera.cliente_id) obtenerTarifasEspecialesAccion(cabecera.cliente_id).then(setTarifasCliente);
@@ -89,6 +96,8 @@ export function EditorCotizacion(p: EditorProps) {
         nEspeciales: Object.keys(tarifasCliente).length,
         especiales: Object.keys(tarifasCliente).map((cid) => p.catalogo.conceptos.find((c) => c.id === cid)?.nombre).filter((n): n is string => !!n),
         historial: historialCliente,
+        ultima: ultimaCotizacion,
+        preciosAplicados: conceptosUltima.length > 0,
       }
     : null;
 
@@ -113,6 +122,26 @@ export function EditorCotizacion(p: EditorProps) {
       routing: x.routing || (r.via && r.via.toLowerCase() !== "direct" ? `Vía ${r.via}` : "Directo"),
     }));
     setSucio(true);
+  };
+
+  /** Repite los precios modificados de la última cotización: se aplican como tarifa del cliente a los servicios que se elijan. */
+  const usarPreciosUltima = (precios: PrecioModificado[]) => {
+    setTarifasCliente((t) => ({ ...t, ...Object.fromEntries(precios.map((m) => [m.concepto_id, { tipo_margen: m.tipo_margen, valor_margen: m.valor_margen }])) }));
+    setConceptosUltima(precios.map((m) => m.concepto_id));
+    // Lo que ya está en la cotización se actualiza también.
+    setLineas((ls) => ls.map((l) => {
+      const m = precios.find((x) => x.concepto_id === l.concepto_id);
+      return m ? { ...l, tipo_margen: m.tipo_margen, valor_margen: m.valor_margen, tarifaDeUltima: true, esTarifaCliente: false } : l;
+    }));
+    setSucio(true);
+  };
+  const elegirClienteGuardado = (k: Cliente) => {
+    cambiarCabecera({
+      cliente_id: k.id, cliente_nombre: k.empresa || k.nombre,
+      contacto: k.contacto_nombre || (k.empresa ? k.nombre : "") || "", cliente_telefono: k.contacto_telefono || "",
+      consignatario: k.consignatario || (esCourier ? (k.empresa ?? "") : ""), direccion_entrega: k.direccion || "",
+    });
+    setEligiendoCliente(false);
   };
 
   const cambiarCabecera = (c: Partial<CabeceraForm>) => {
@@ -161,7 +190,7 @@ export function EditorCotizacion(p: EditorProps) {
           </div>
           <div className="flex items-center gap-3">
             {error && <span className="text-sm text-destructive">{error}</span>}
-            {p.puedeEditar && (
+            {p.puedeEditar && !eligiendoCliente && (
               <Button onClick={guardar} disabled={guardando || (!sucio && !!p.id)} size="lg">
                 {guardando ? "Guardando…" : p.id ? "Guardar cambios" : "Guardar cotización"}
               </Button>
@@ -169,8 +198,10 @@ export function EditorCotizacion(p: EditorProps) {
           </div>
         </div>
 
-        <fieldset disabled={!p.puedeEditar} className="min-w-0 space-y-6 disabled:opacity-80">
-          <DatosCarga cabecera={cabecera} onChange={cambiarCabecera} clientes={p.clientes} peso={peso} servicio={servicio} puertos={puertos} infoCliente={infoCliente} />
+        {eligiendoCliente && <ElegirCliente clientes={p.clientes} onElegir={elegirClienteGuardado} onNuevo={() => setEligiendoCliente(false)} />}
+
+        <fieldset disabled={!p.puedeEditar} className={`min-w-0 space-y-6 disabled:opacity-80 ${eligiendoCliente ? "hidden" : ""}`}>
+          <DatosCarga cabecera={cabecera} onChange={cambiarCabecera} clientes={p.clientes} peso={peso} servicio={servicio} puertos={puertos} infoCliente={infoCliente} onUsarPrecios={usarPreciosUltima} onCambiarCliente={() => setEligiendoCliente(true)} />
 
           <Servicios
             servicio={servicio}
@@ -192,6 +223,7 @@ export function EditorCotizacion(p: EditorProps) {
             onRutaAgregada={alAgregarRuta}
             clienteId={cabecera.cliente_id}
             onTarifaGuardada={recargarTarifasCliente}
+            conceptosUltima={conceptosUltima}
           />
 
           <Descuentos descuentos={cabecera.descuentos} onChange={(d) => cambiarCabecera({ descuentos: d })} />

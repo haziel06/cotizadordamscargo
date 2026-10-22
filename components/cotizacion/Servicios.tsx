@@ -47,6 +47,8 @@ interface Props {
   /** Cliente guardado de la cotización: habilita "guardar este precio como tarifa del cliente" (solo admin). */
   clienteId?: string | null;
   onTarifaGuardada?: () => void;
+  /** Conceptos cuyo precio viene de la última cotización del cliente (se pidió repetirlo). */
+  conceptosUltima?: string[];
 }
 
 /** Guarda el margen/precio de esta línea como tarifa especial del cliente: la próxima cotización de él lo traerá solo. */
@@ -107,7 +109,7 @@ function PrecioVentaEditable({ valor, moneda, nombre, onConfirmar }: { valor: nu
 }
 const redondearDos = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin, autoArmar, tarifasCliente, clienteNombre, origen, tipoCarga, onRutaAgregada, clienteId, onTarifaGuardada }: Props) {
+export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin, autoArmar, tarifasCliente, clienteNombre, origen, tipoCarga, onRutaAgregada, clienteId, onTarifaGuardada, conceptosUltima }: Props) {
   const tarifarioPorId = useMemo(() => new Map(catalogo.tarifarios.map((t) => [t.id, t])), [catalogo.tarifarios]);
   const conceptosAplicables = useMemo(
     () => catalogo.conceptos.filter((c) => conceptoAplicaAServicio(c, c.tarifario_id ? tarifarioPorId.get(c.tarifario_id)?.servicio : null, tipos)),
@@ -163,7 +165,8 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
       ruta: t?.origen && t?.destino && t.seccion !== "gastos_locales" ? `${t.origen} → ${t.destino}` : null,
       unidad: c.unidad, pendiente: c.pendiente, seccion: c.seccion,
       minimo: c.minimo == null ? null : Number(c.minimo), editable_por_todos: c.editable_por_todos,
-      esTarifaCliente: Boolean(especial),
+      esTarifaCliente: Boolean(especial) && !conceptosUltima?.includes(c.id),
+      tarifaDeUltima: Boolean(especial) && Boolean(conceptosUltima?.includes(c.id)),
     };
   };
   const agregarConcepto = (c: Concepto) => onChange((ls) => [...ls, lineaDesdeConcepto(c)]);
@@ -474,6 +477,11 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                               {l.esTarifaCliente && (
                                 <span className="rounded bg-ambar/20 px-2 py-0.5 text-xs font-medium text-amber-900" title="Precio ya acordado con este cliente; puedes dejarlo o cambiarlo para esta cotización.">
                                   Tarifa guardada para {clienteNombre || "este cliente"}
+                                </span>
+                              )}
+                              {l.tarifaDeUltima && (
+                                <span className="rounded bg-ambar/20 px-2 py-0.5 text-xs font-medium text-amber-900" title="Precio que tuvo {clienteNombre || 'este cliente'} en su última cotización; puedes dejarlo o cambiarlo.">
+                                  Precio de su última cotización
                                 </span>
                               )}
                               {esAdmin && clienteId && l.concepto_id && !l.cuenta_ajena && (

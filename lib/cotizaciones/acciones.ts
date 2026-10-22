@@ -38,6 +38,17 @@ async function reconstruirLineasVendedor(supabase: Awaited<ReturnType<typeof cre
     ? await supabase.from("tarifarios").select("id, nombre, vigencia_desde, vigencia_hasta, archivado_at").in("id", tarifarioIds)
     : { data: [] };
   const noUsables = new Map((tarifarios ?? []).filter((t) => !tarifarioUsable(t)).map((t) => [t.id, t.nombre]));
+  // Precios que ESTE cliente ya tuvo en cotizaciones anteriores: repetir uno de ellos es legítimo aunque quien cotiza no sea
+  // admin, porque el valor sale de la base y no de lo que mande la pantalla.
+  let preciosPrevios: { concepto_id: string; tipo_margen: string; valor_margen: number }[] = [];
+  if (clienteId && conceptoIds.length) {
+    const { data: cots } = await supabase.from("cotizaciones").select("id").eq("cliente_id", clienteId).order("created_at", { ascending: false }).limit(15);
+    const idsCots = (cots ?? []).map((c) => c.id);
+    if (idsCots.length) {
+      const { data } = await supabase.from("cotizacion_lineas").select("concepto_id, tipo_margen, valor_margen").in("cotizacion_id", idsCots).in("concepto_id", conceptoIds);
+      preciosPrevios = (data ?? []).filter((x): x is typeof x & { concepto_id: string } => !!x.concepto_id).map((x) => ({ concepto_id: x.concepto_id, tipo_margen: x.tipo_margen, valor_margen: Number(x.valor_margen) }));
+    }
+  }
   const salida: LineaEntrada[] = [];
   for (const l of lineas) {
     const previa = (previas ?? []).find((p) => (l.concepto_id && p.concepto_id === l.concepto_id) || (l.ruta_id && p.ruta_id === l.ruta_id));
@@ -57,6 +68,9 @@ async function reconstruirLineasVendedor(supabase: Awaited<ReturnType<typeof cre
     // defecto, aunque el usuario normal no pueda ver ni tocar la fórmula detrás.
     const especial = c ? tarifasCliente.get(c.id) : undefined;
     if (especial) { base.tipo_margen = especial.tipo_margen; base.valor_margen = especial.valor_margen; }
+    const repiteElDeSuUltima = Boolean(c) && !especial && l.tipo_margen === "precio_fijo" &&
+      preciosPrevios.some((x) => x.concepto_id === c!.id && x.tipo_margen === "precio_fijo" && Math.abs(x.valor_margen - Number(l.valor_margen)) < 0.005);
+    if (repiteElDeSuUltima) { base.tipo_margen = "precio_fijo"; base.valor_margen = Number(l.valor_margen); }
     // Conceptos marcados "cualquiera puede ajustar el precio": el vendedor puede escribir un precio
     // final distinto, pero nunca el costo ni la fórmula (esas siempre vienen del concepto real).
     const editable = Boolean(c?.editable_por_todos);
