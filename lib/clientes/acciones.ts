@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { sesionActual } from "@/lib/sesion";
-import { tarifasEspecialesCliente } from "./consultas";
+import { cotizacionesDeCliente, tarifasEspecialesCliente, type CotizacionDeCliente } from "./consultas";
 
 export type Resultado = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -78,6 +78,14 @@ export async function obtenerTarifasEspecialesAccion(clienteId: string): Promise
   if (!sesion) return {};
   const mapa = await tarifasEspecialesCliente(clienteId, { ocultarCostos: !sesion.esAdmin });
   return Object.fromEntries(mapa);
+}
+
+/** Para el editor de cotización: últimas cotizaciones del cliente elegido (un usuario normal solo ve las suyas). */
+export async function historialClienteAccion(clienteId: string): Promise<CotizacionDeCliente[]> {
+  if (!/^[0-9a-f-]{36}$/i.test(clienteId)) return [];
+  const sesion = await sesionActual();
+  if (!sesion) return [];
+  return cotizacionesDeCliente(clienteId, { usuario: sesion.esAdmin ? undefined : sesion.userId, limite: 5 });
 }
 
 export async function eliminarTarifaCliente(id: string, clienteId: string): Promise<Resultado> {

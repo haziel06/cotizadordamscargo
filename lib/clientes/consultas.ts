@@ -15,6 +15,22 @@ export interface TarifaClienteFila {
   notas: string | null;
 }
 
+export interface CotizacionDeCliente { id: string; numero: string; fecha: string; estado: string; total_gtq: number; tipo_servicio: string }
+
+/** Cotizaciones de un cliente, de la más reciente a la más vieja. `usuario` limita a las de esa persona (usuario normal). */
+export async function cotizacionesDeCliente(clienteId: string, opciones: { usuario?: string; limite?: number } = {}): Promise<CotizacionDeCliente[]> {
+  const supabase = await crearClienteServidor();
+  // También las hechas antes de guardar al cliente (sin vínculo): se reconocen por el nombre exacto, sin importar mayúsculas.
+  const { data: cli } = await supabase.from("clientes").select("nombre, empresa").eq("id", clienteId).maybeSingle();
+  const nombres = [cli?.empresa, cli?.nombre].filter((n): n is string => !!n).map((n) => n.replace(/[,()%*\\]/g, "").trim()).filter((n) => n.length >= 3);
+  const criterio = [`cliente_id.eq.${clienteId}`, ...nombres.map((n) => `cliente_nombre.ilike.${n}`)].join(",");
+  let q = supabase.from("cotizaciones").select("id, numero, fecha, estado, total_gtq, tipo_servicio").or(criterio)
+    .order("fecha", { ascending: false }).order("created_at", { ascending: false }).limit(opciones.limite ?? 8);
+  if (opciones.usuario) q = q.eq("creado_por", opciones.usuario);
+  const { data } = await q;
+  return (data ?? []).map((c) => ({ id: c.id, numero: c.numero, fecha: c.fecha, estado: c.estado, total_gtq: Number(c.total_gtq), tipo_servicio: c.tipo_servicio }));
+}
+
 export async function listarClientes(): Promise<Cliente[]> {
   const supabase = await crearClienteServidor();
   const { data } = await supabase.from("clientes").select("*").order("nombre");

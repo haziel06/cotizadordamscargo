@@ -1,5 +1,6 @@
 "use client";
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { AlertTriangle, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Campo, Casilla, Entrada, Selector } from "@/components/Campos";
@@ -10,6 +11,8 @@ import type { CabeceraForm } from "@/lib/cotizaciones/esquema";
 import type { Cliente } from "@/lib/supabase/tipos";
 import type { GanadorPeso } from "@/lib/calculo/peso";
 import { guardarCliente } from "@/lib/clientes/acciones";
+import type { CotizacionDeCliente } from "@/lib/clientes/consultas";
+import { formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -20,13 +23,15 @@ interface Props {
   servicio: DefServicio;
   /** Puertos de origen que hay en los tarifarios vigentes (sugerencias al escribir el origen). */
   puertos?: string[];
+  /** Del cliente guardado elegido: precios preferenciales y cotizaciones anteriores. */
+  infoCliente?: { nEspeciales: number; especiales: string[]; historial: CotizacionDeCliente[] } | null;
 }
 
 const LB_POR_KG = 2.20462;
 const aLb = (kg: number) => Math.round(kg * LB_POR_KG * 100) / 100;
 const aKg = (lb: number) => Math.round((lb / LB_POR_KG) * 10000) / 10000;
 
-export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, puertos = [] }: Props) {
+export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, puertos = [], infoCliente }: Props) {
   const muestra = (campo: CampoCarga) => servicio.campos.includes(campo);
   const kg = Number(c.kilogramos) || 0;
   const [sugerencias, setSugerencias] = useState<Cliente[]>([]);
@@ -92,6 +97,7 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, pu
           <Entrada
             value={c.cliente_nombre}
             onChange={(e) => buscarCliente(e.target.value)}
+            onFocus={() => { if (!c.cliente_nombre.trim()) setSugerencias(clientes.slice(0, 8)); }}
             onBlur={() => setTimeout(() => setSugerencias([]), 150)}
             placeholder={esCourier ? "Ej. María Pérez" : "Nombre de la empresa"}
             autoComplete="off"
@@ -114,7 +120,34 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, pu
             </ul>
           )}
           {c.cliente_id ? (
-            <span className="text-xs text-verde">Cliente registrado</span>
+            <div className="mt-1.5 space-y-1 rounded-md border border-verde/40 bg-verde/5 p-2 text-xs">
+              <div className="font-medium text-verde">Cliente guardado</div>
+              {infoCliente && infoCliente.nEspeciales > 0 ? (
+                <div className="text-amber-900">
+                  <strong>Tiene precio preferencial</strong> en {infoCliente.nEspeciales} {infoCliente.nEspeciales === 1 ? "servicio" : "servicios"}
+                  {infoCliente.especiales.length > 0 ? `: ${infoCliente.especiales.slice(0, 4).join(", ")}${infoCliente.especiales.length > 4 ? "…" : ""}` : ""}. Se aplica solo al elegirlos y lo verás marcado.
+                </div>
+              ) : (
+                <div className="text-muted-foreground">Sin precios especiales: se usan las tarifas normales.</div>
+              )}
+              {infoCliente && infoCliente.historial.length > 0 ? (
+                <div>
+                  <div className="text-muted-foreground">Últimas cotizaciones:</div>
+                  <ul className="space-y-0.5">
+                    {infoCliente.historial.map((h) => (
+                      <li key={h.id}>
+                        <Link href={`/cotizaciones/${h.id}`} target="_blank" className="text-primary hover:underline">{h.numero}</Link>
+                        <span className="text-muted-foreground"> · {formatoFecha(h.fecha)} · {formatoMoneda(h.total_gtq, "GTQ")} · {h.estado}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : infoCliente ? (
+                <div className="text-muted-foreground">Sin cotizaciones anteriores.</div>
+              ) : null}
+            </div>
+          ) : !c.cliente_nombre.trim() && clientes.length > 0 ? (
+            <span className="text-xs text-muted-foreground">Toca el campo para elegir entre {clientes.length} clientes guardados, o escribe un nombre.</span>
           ) : c.cliente_nombre.trim() ? (
             <Button type="button" variant="ghost" size="xs" className="mt-1 h-auto p-0 text-xs font-normal text-primary" disabled={guardandoCliente} onClick={guardarComoCliente}>
               <Save className="size-3" /> {guardandoCliente ? "Guardando…" : "Guardar como cliente (para tarifas especiales y futuras cotizaciones)"}

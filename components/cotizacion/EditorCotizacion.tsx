@@ -9,7 +9,8 @@ import type { Recargos } from "@/lib/calculo/tipos";
 import { pesoCobrable } from "@/lib/calculo/peso";
 import { alertasCotizacion } from "@/lib/calculo/alertas";
 import { guardarCotizacion } from "@/lib/cotizaciones/acciones";
-import { obtenerTarifasEspecialesAccion } from "@/lib/clientes/acciones";
+import { historialClienteAccion, obtenerTarifasEspecialesAccion } from "@/lib/clientes/acciones";
+import type { CotizacionDeCliente } from "@/lib/clientes/consultas";
 import type { CabeceraForm, LineaEditable } from "@/lib/cotizaciones/esquema";
 import type { Defaults, TextosLegales } from "@/lib/config";
 import type { Cliente, TarifaRuta } from "@/lib/supabase/tipos";
@@ -70,13 +71,26 @@ export function EditorCotizacion(p: EditorProps) {
   // Tarifas especiales del cliente elegido: se piden al servidor cada vez que cambia el cliente
   // (no viven en el catálogo inicial porque dependen de a quién se le cotiza, no del servicio).
   const [tarifasCliente, setTarifasCliente] = useState<Record<string, { tipo_margen: "porcentaje" | "monto_fijo" | "precio_fijo"; valor_margen: number }>>({});
+  const [historialCliente, setHistorialCliente] = useState<CotizacionDeCliente[]>([]);
   const clienteIdRef = useRef<string | null>(null);
   useEffect(() => {
     const id = cabecera.cliente_id;
     if (id === clienteIdRef.current) return;
     clienteIdRef.current = id;
     (id ? obtenerTarifasEspecialesAccion(id) : Promise.resolve({})).then(setTarifasCliente);
+    (id ? historialClienteAccion(id) : Promise.resolve([])).then(setHistorialCliente);
   }, [cabecera.cliente_id]);
+  const recargarTarifasCliente = () => {
+    if (cabecera.cliente_id) obtenerTarifasEspecialesAccion(cabecera.cliente_id).then(setTarifasCliente);
+  };
+  // Qué servicios tienen precio preferencial para este cliente (solo nombres: la fórmula es del administrador).
+  const infoCliente = cabecera.cliente_id
+    ? {
+        nEspeciales: Object.keys(tarifasCliente).length,
+        especiales: Object.keys(tarifasCliente).map((cid) => p.catalogo.conceptos.find((c) => c.id === cid)?.nombre).filter((n): n is string => !!n),
+        historial: historialCliente,
+      }
+    : null;
 
   // Puertos de origen que existen en los tarifarios vigentes de estos servicios: se ofrecen al escribir el origen.
   const puertos = useMemo(() => {
@@ -156,7 +170,7 @@ export function EditorCotizacion(p: EditorProps) {
         </div>
 
         <fieldset disabled={!p.puedeEditar} className="min-w-0 space-y-6 disabled:opacity-80">
-          <DatosCarga cabecera={cabecera} onChange={cambiarCabecera} clientes={p.clientes} peso={peso} servicio={servicio} puertos={puertos} />
+          <DatosCarga cabecera={cabecera} onChange={cambiarCabecera} clientes={p.clientes} peso={peso} servicio={servicio} puertos={puertos} infoCliente={infoCliente} />
 
           <Servicios
             servicio={servicio}
@@ -176,6 +190,8 @@ export function EditorCotizacion(p: EditorProps) {
             origen={cabecera.origen}
             tipoCarga={cabecera.tipo_carga}
             onRutaAgregada={alAgregarRuta}
+            clienteId={cabecera.cliente_id}
+            onTarifaGuardada={recargarTarifasCliente}
           />
 
           <Descuentos descuentos={cabecera.descuentos} onChange={(d) => cambiarCabecera({ descuentos: d })} />

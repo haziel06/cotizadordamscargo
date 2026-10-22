@@ -11,6 +11,7 @@ import type { LineaEditable } from "@/lib/cotizaciones/esquema";
 import { cantidadPorUnidad, conceptoAplicaAServicio, conceptosCourier } from "@/lib/cotizaciones/armado";
 import { buscarFletes, palabras } from "@/lib/cotizaciones/fletes";
 import { estiloSeccion } from "@/components/tarifas/estiloServicio";
+import { guardarTarifaCliente } from "@/lib/clientes/acciones";
 import type { Catalogo } from "@/lib/tarifas/consultas";
 import type { Concepto, SegmentoCourier, TarifaRuta, TipoServicio } from "@/lib/supabase/tipos";
 import type { Categoria, Moneda, Recargos, TipoMargen, Unidad } from "@/lib/calculo/tipos";
@@ -43,6 +44,27 @@ interface Props {
   tipoCarga?: string | null;
   /** Se avisa al agregar un flete para que la carga tome su tránsito y vía. */
   onRutaAgregada?: (r: TarifaRuta) => void;
+  /** Cliente guardado de la cotización: habilita "guardar este precio como tarifa del cliente" (solo admin). */
+  clienteId?: string | null;
+  onTarifaGuardada?: () => void;
+}
+
+/** Guarda el margen/precio de esta línea como tarifa especial del cliente: la próxima cotización de él lo traerá solo. */
+function GuardarPrecioCliente({ clienteId, clienteNombre, linea, onGuardado }: { clienteId: string; clienteNombre: string; linea: LineaEditable; onGuardado?: () => void }) {
+  const [estado, setEstado] = useState<"idle" | "guardando" | "ok" | string>("idle");
+  const guardar = async () => {
+    if (!linea.concepto_id) return;
+    if (!confirm(`¿Guardar este precio como tarifa especial de ${clienteNombre || "este cliente"} para «${linea.nombre}»?\n\nLa próxima cotización de este cliente lo traerá solo.`)) return;
+    setEstado("guardando");
+    const r = await guardarTarifaCliente({ cliente_id: clienteId, concepto_id: linea.concepto_id, tipo_margen: linea.tipo_margen, valor_margen: linea.valor_margen, notas: null });
+    if (r.ok) { setEstado("ok"); onGuardado?.(); } else setEstado(r.error);
+  };
+  return (
+    <Button type="button" variant="outline" size="xs" disabled={estado === "guardando"} onClick={guardar} title="Guarda el margen o precio de esta línea como precio preferencial de este cliente">
+      {estado === "ok" ? "Guardado para el cliente" : estado === "guardando" ? "Guardando…" : linea.esTarifaCliente ? "Actualizar tarifa del cliente" : "Guardar como tarifa del cliente"}
+      {estado !== "idle" && estado !== "ok" && estado !== "guardando" && <span className="ml-1 text-destructive">{estado}</span>}
+    </Button>
+  );
 }
 
 let contador = 0;
@@ -85,7 +107,7 @@ function PrecioVentaEditable({ valor, moneda, nombre, onConfirmar }: { valor: nu
 }
 const redondearDos = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin, autoArmar, tarifasCliente, clienteNombre, origen, tipoCarga, onRutaAgregada }: Props) {
+export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin, autoArmar, tarifasCliente, clienteNombre, origen, tipoCarga, onRutaAgregada, clienteId, onTarifaGuardada }: Props) {
   const tarifarioPorId = useMemo(() => new Map(catalogo.tarifarios.map((t) => [t.id, t])), [catalogo.tarifarios]);
   const conceptosAplicables = useMemo(
     () => catalogo.conceptos.filter((c) => conceptoAplicaAServicio(c, c.tarifario_id ? tarifarioPorId.get(c.tarifario_id)?.servicio : null, tipos)),
@@ -451,6 +473,9 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                                 <span className="rounded bg-ambar/20 px-2 py-0.5 text-xs font-medium text-amber-900" title="Precio ya acordado con este cliente; puedes dejarlo o cambiarlo para esta cotización.">
                                   Tarifa guardada para {clienteNombre || "este cliente"}
                                 </span>
+                              )}
+                              {esAdmin && clienteId && l.concepto_id && !l.cuenta_ajena && (
+                                <GuardarPrecioCliente clienteId={clienteId} clienteNombre={clienteNombre ?? ""} linea={l} onGuardado={onTarifaGuardada} />
                               )}
                               <label className="flex items-center gap-1 text-xs text-muted-foreground">
                                 Cant.
