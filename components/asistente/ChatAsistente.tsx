@@ -1,12 +1,15 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { Bot, Download, FileText, MessageSquarePlus, Send, Ship, Sparkles, Trash2, User } from "lucide-react";
+import { Bot, Download, FileText, MessageSquarePlus, Paperclip, RefreshCw, Send, Ship, Sparkles, Trash2, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { AdjuntoChat } from "@/lib/ia/tipos";
-import { preguntarIA } from "@/lib/ia/acciones";
+import { preguntarIA, preguntarIAConArchivo } from "@/lib/ia/acciones";
+import { prepararArchivoCliente } from "@/lib/imagen";
+import { ACEPTA_DOCUMENTOS } from "@/lib/ia/documento-tipos";
+import { DialogoActualizarTarifa } from "@/components/tarifas/DialogoActualizarTarifa";
 import { cargarConversacionIA, eliminarConversacionIA, guardarConversacionIA, listarConversacionesIA, type ResumenConversacion } from "@/lib/ia/acciones";
 import { TextoFormateado } from "./TextoFormateado";
 
@@ -33,6 +36,10 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [pendiente, startTransition] = useTransition();
   const finRef = useRef<HTMLDivElement>(null);
+  const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
+  const [arrastrando, setArrastrando] = useState(false);
+  const [revisando, setRevisando] = useState<string | null>(null);
+  const inputArchivo = useRef<HTMLInputElement>(null);
 
   const refrescarLista = () => listarConversacionesIA().then(setConversaciones);
   useEffect(() => {
@@ -42,19 +49,37 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [mensajes.length, pendiente]);
 
+  const adjuntar = (f: File | undefined | null) => {
+    if (f) prepararArchivoCliente(f).then(setArchivoAdjunto);
+  };
+
   const enviar = (pregunta: string) => {
     const limpio = pregunta.trim();
-    if (!limpio || pendiente) return;
+    if ((!limpio && !archivoAdjunto) || pendiente) return;
     setError(null);
-    const historial = [...mensajes, { role: "user" as const, content: limpio }];
+    const archivo = archivoAdjunto;
+    const contenido = archivo ? `📎 ${archivo.name}\n${limpio || "Revisa este archivo."}` : limpio;
+    const historial = [...mensajes, { role: "user" as const, content: contenido }];
     setMensajes(historial);
     setTexto("");
+    setArchivoAdjunto(null);
     startTransition(async () => {
-      const r = await preguntarIA(historial.map(({ role, content }) => ({ role, content })));
+      const soloTexto = historial.map(({ role, content }) => ({ role, content }));
+      let r;
+      if (archivo) {
+        const form = new FormData();
+        form.set("historial", JSON.stringify(soloTexto));
+        form.set("archivo", archivo);
+        r = await preguntarIAConArchivo(form);
+      } else {
+        r = await preguntarIA(soloTexto);
+      }
       if (r.ok) {
         const conRespuesta = [...historial, { role: "assistant" as const, content: r.texto, ...(r.adjuntos.length ? { adjuntos: r.adjuntos } : {}) }];
         setMensajes(conRespuesta);
-        const guardado = await guardarConversacionIA(conversacionId, conRespuesta);
+        // Las propuestas de tarifas pueden ser grandes y ya no sirven al reabrir la conversación: no se guardan.
+        const liviano = conRespuesta.map((m) => ({ ...m, adjuntos: m.adjuntos?.map((a) => (a.tipo === "actualizacion_tarifa" ? { ...a, propuesta: undefined } : a)) }));
+        const guardado = await guardarConversacionIA(conversacionId, liviano);
         if (guardado.ok) {
           setConversacionId(guardado.id);
           refrescarLista();
@@ -114,7 +139,13 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
         <p className="mt-2 px-1 text-[11px] text-muted-foreground">Se guardan tus últimas 10; las más viejas se borran solas.</p>
       </aside>
 
-      <div className="flex flex-1 flex-col overflow-hidden rounded-lg border bg-card">
+      <div
+        className={cn("relative flex flex-1 flex-col overflow-hidden rounded-lg border bg-card", arrastrando && "border-primary ring-2 ring-primary/30")}
+        onDragOver={(e) => { e.preventDefault(); setArrastrando(true); }}
+        onDragLeave={(e) => { if (e.currentTarget === e.target) setArrastrando(false); }}
+        onDrop={(e) => { e.preventDefault(); setArrastrando(false); adjuntar(e.dataTransfer.files?.[0]); }}
+      >
+        {arrastrando && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-primary/5 text-sm font-medium text-primary">Suelta aquí la foto, PDF o Excel</div>}
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           {mensajes.length === 0 && (
             <div className="mx-auto max-w-2xl space-y-4 py-6">
@@ -154,6 +185,22 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
                         <Download className="size-3.5" /> PDF
                       </Button>
                       <Button size="sm" variant="outline" nativeButton={false} render={<Link href={`/cotizaciones/${a.id}`} />}>Abrir</Button>
+                    </div>
+                  ) : a.tipo === "actualizacion_tarifa" ? (
+                    <div key={j} className="flex flex-wrap items-center gap-2 rounded-md border bg-background p-2 text-foreground">
+                      <RefreshCw className="size-4 text-primary" />
+                      <div className="mr-auto min-w-0 text-xs">
+                        <div className="font-medium">Actualización de «{a.tarifarioNombre}»</div>
+                        <div className="text-muted-foreground">{a.nuevos} nuevos · {a.cambian} cambian · {a.iguales} iguales (no se tocan)</div>
+                      </div>
+                      {a.propuesta ? (
+                        <Button size="sm" onClick={() => setRevisando(`${i}-${j}`)}>Revisar y aplicar</Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Vuelve a adjuntar el archivo para revisarla.</span>
+                      )}
+                      {a.propuesta && revisando === `${i}-${j}` && (
+                        <DialogoActualizarTarifa propuestaInicial={a.propuesta} abierto onAbierto={(v) => !v && setRevisando(null)} />
+                      )}
                     </div>
                   ) : (
                     <div key={j} className="rounded-md border bg-background p-2 text-foreground">
@@ -197,6 +244,12 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
             ))}
           </div>
         )}
+        {archivoAdjunto && (
+          <div className="mx-3 mt-2 flex items-center gap-2 rounded-md border bg-muted/50 px-2 py-1 text-xs">
+            <Paperclip className="size-3.5" /> <span className="truncate">{archivoAdjunto.name}</span>
+            <button type="button" className="ml-auto" onClick={() => setArchivoAdjunto(null)} aria-label="Quitar archivo"><X className="size-3.5" /></button>
+          </div>
+        )}
         <form
           className="flex gap-2 p-3 pt-2"
           onSubmit={(e) => {
@@ -204,6 +257,8 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
             enviar(texto);
           }}
         >
+          <input ref={inputArchivo} type="file" accept={ACEPTA_DOCUMENTOS} className="hidden" onChange={(e) => { adjuntar(e.target.files?.[0]); e.target.value = ""; }} />
+          <Button type="button" variant="outline" size="icon" title="Adjuntar foto, PDF o Excel (o arrástralo al chat)" onClick={() => inputArchivo.current?.click()}><Paperclip className="size-4" /></Button>
           <Textarea
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
@@ -213,11 +268,11 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
                 enviar(texto);
               }
             }}
-            placeholder="Escribe aquí… (Enter envía, Shift+Enter hace un salto de línea)"
+            placeholder="Escribe aquí… o adjunta una foto, PDF o Excel con el clip"
             className="min-h-10 resize-none"
             rows={1}
           />
-          <Button type="submit" disabled={pendiente || !texto.trim()}>
+          <Button type="submit" disabled={pendiente || (!texto.trim() && !archivoAdjunto)}>
             <Send className="size-4" />
           </Button>
         </form>

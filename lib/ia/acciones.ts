@@ -5,13 +5,14 @@ import { crearClienteServidor } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/tipos";
 import { preguntarAsistente, type MensajeChat } from "./asistente";
 import type { AdjuntoChat } from "./tipos";
+import { prepararDocumento, type DocumentoIA } from "./documento";
 
 const esquemaHistorial = z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(2000) })).min(1).max(20);
 const MAX_CONVERSACIONES = 10;
 
 export type RespuestaAsistente = { ok: true; texto: string; adjuntos: AdjuntoChat[] } | { ok: false; error: string };
 
-export async function preguntarIA(historial: unknown): Promise<RespuestaAsistente> {
+async function responder(historial: unknown, archivo?: DocumentoIA): Promise<RespuestaAsistente> {
   const parsed = esquemaHistorial.safeParse(historial);
   if (!parsed.success) return { ok: false, error: "Mensaje inválido." };
 
@@ -19,11 +20,30 @@ export async function preguntarIA(historial: unknown): Promise<RespuestaAsistent
   if (!sesion || !sesion.activo) return { ok: false, error: "Sesión vencida." };
 
   try {
-    const { texto, adjuntos } = await preguntarAsistente(sesion, parsed.data as MensajeChat[]);
+    const { texto, adjuntos } = await preguntarAsistente(sesion, parsed.data as MensajeChat[], archivo);
     return { ok: true, texto, adjuntos };
   } catch {
     return { ok: false, error: "No pude conectarme con el asistente en este momento. Intenta de nuevo en un momento." };
   }
+}
+
+export async function preguntarIA(historial: unknown): Promise<RespuestaAsistente> {
+  return responder(historial);
+}
+
+/** Igual que preguntarIA, pero con un archivo adjunto (foto, PDF, Excel) que las herramientas pueden leer. */
+export async function preguntarIAConArchivo(form: FormData): Promise<RespuestaAsistente> {
+  let historial: unknown;
+  try {
+    historial = JSON.parse(String(form.get("historial") ?? "[]"));
+  } catch {
+    return { ok: false, error: "Mensaje inválido." };
+  }
+  const archivo = form.get("archivo");
+  if (!(archivo instanceof File)) return responder(historial);
+  const preparado = await prepararDocumento(archivo);
+  if (!preparado.ok) return preparado;
+  return responder(historial, preparado.doc);
 }
 
 export interface ResumenConversacion { id: string; titulo: string; updated_at: string }

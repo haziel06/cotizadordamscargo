@@ -1,4 +1,6 @@
 import type { Sesion } from "@/lib/sesion";
+import type { PropuestaActualizacion } from "@/lib/tarifas/diferencias";
+import type { DocumentoIA } from "./documento";
 
 export type RolMensaje = "system" | "user" | "assistant" | "tool";
 
@@ -27,12 +29,16 @@ export interface OpcionChat { ref: string; etiqueta: string; detalle: string; pr
 export type AdjuntoChat =
   | { tipo: "cotizacion"; id: string; numero: string; cliente: string; total: string }
   /** Tarjeta con opciones para elegir con un clic (ej. los fletes de cada proveedor): el clic manda la elección como mensaje. */
-  | { tipo: "opciones_flete"; titulo: string; opciones: OpcionChat[] };
+  | { tipo: "opciones_flete"; titulo: string; opciones: OpcionChat[] }
+  /** Cambios propuestos a un tarifario a partir de un archivo; solo se aplican cuando el administrador los revisa y confirma. */
+  | { tipo: "actualizacion_tarifa"; tarifarioId: string; tarifarioNombre: string; nuevos: number; cambian: number; iguales: number; propuesta?: PropuestaActualizacion };
 
 export interface ContextoHerramienta {
   sesion: Sesion;
   /** Las herramientas que producen algo descargable lo agregan aquí; el router lo devuelve junto al texto. */
   adjuntos: AdjuntoChat[];
+  /** Archivo que el empleado adjuntó a este mensaje (foto, PDF, Excel), ya preparado para la IA. */
+  archivo?: DocumentoIA;
 }
 
 export interface HerramientaIA {

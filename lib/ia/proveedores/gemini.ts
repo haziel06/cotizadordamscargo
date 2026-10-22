@@ -124,6 +124,8 @@ export async function extraerJsonDeDocumento(opciones: {
   instruccion: string;
   archivoBase64?: string;
   mimeType?: string;
+  /** Contenido ya en texto (Excel/CSV convertidos); alternativa a `archivoBase64`. */
+  texto?: string;
   esquemaJson: Record<string, unknown>;
   /** Tope de tokens de salida; las hojas de tarifas largas necesitan bastante más que un formulario. */
   maxTokens?: number;
@@ -134,6 +136,7 @@ export async function extraerJsonDeDocumento(opciones: {
 
   const partes: Record<string, unknown>[] = [{ text: opciones.instruccion }];
   if (opciones.archivoBase64 && opciones.mimeType) partes.push({ inline_data: { mime_type: opciones.mimeType, data: opciones.archivoBase64 } });
+  if (opciones.texto) partes.push({ text: `CONTENIDO DEL ARCHIVO (tabulado por hojas):\n${opciones.texto}` });
 
   const cuerpo = {
     contents: [{ role: "user", parts: partes }],

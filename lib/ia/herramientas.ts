@@ -7,8 +7,11 @@ import { ventaLinea } from "@/lib/calculo/linea";
 import { formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
 import { ETIQUETA_ESTADO } from "@/lib/tarifas/estado";
 import { listarClientes, obtenerCliente } from "@/lib/clientes/consultas";
-import { buscarFletes, textoTransito, textoVia } from "@/lib/cotizaciones/fletes";
+import { buscarFletes, normalizar, textoTransito, textoVia } from "@/lib/cotizaciones/fletes";
 import { textoUnidad } from "@/lib/etiquetas";
+import { coincideProveedor, extraerTarifarioDeDocumento } from "./tarifarioIA";
+import { proponerActualizacion } from "@/lib/tarifas/actualizacion";
+import { resumenCambios } from "@/lib/tarifas/diferencias";
 import { crearCotizacionDesdeChat, type DatosCotizacionChat } from "./crearCotizacionChat";
 import type { ContextoHerramienta, HerramientaIA } from "./tipos";
 
@@ -291,8 +294,56 @@ const crearCotizacion: HerramientaIA = {
   },
 };
 
+const actualizarTarifario: HerramientaIA = {
+  nombre: "actualizarTarifario",
+  descripcion: "Solo administradores. Con el archivo adjunto (foto, PDF o Excel) que mandó el empleado, lee los precios de un proveedor y los compara con su tarifario vigente; deja en el chat una tarjeta para revisar y aplicar. Solo cambia lo que viene distinto o nuevo (lo que el documento no trae no se toca). No guarda nada hasta que el administrador confirme.",
+  parametros: {
+    type: "object",
+    properties: {
+      proveedor: { type: "string", description: "Proveedor o empresa del tarifario, ej. HYDE o Charter Link" },
+      tarifario: { type: "string", description: "Parte del nombre del tarifario, solo si el proveedor tiene varios vigentes" },
+    },
+    required: ["proveedor"],
+  },
+  async ejecutar(args, { sesion, adjuntos, archivo }: ContextoHerramienta) {
+    if (!sesion.esAdmin) return { error: "Solo un administrador puede actualizar tarifas." };
+    if (!archivo) return { error: "No hay archivo adjunto en este mensaje.", instruccion: "Pídele que adjunte la foto, PDF o Excel con el clip (o arrastrándolo) y vuelva a pedirlo." };
+    const buscado = normalizar(String(args.proveedor ?? ""));
+    if (!buscado) return { error: "Falta el nombre del proveedor." };
+    const supabase = await crearClienteServidor();
+    const [{ data: proveedores }, tarifarios] = await Promise.all([supabase.from("proveedores").select("id, nombre").eq("activo", true), listarTarifarios(true)]);
+    const proveedor = coincideProveedor(String(args.proveedor), proveedores ?? []);
+    const filtro = typeof args.tarifario === "string" ? normalizar(args.tarifario) : "";
+    let candidatos = tarifarios.filter((t) => t.estado !== "desactivado" && ((proveedor && t.proveedor_id === proveedor.id) || normalizar(t.nombre).includes(buscado)));
+    if (filtro) candidatos = candidatos.filter((t) => normalizar(t.nombre).includes(filtro));
+    if (!candidatos.length) {
+      return { error: `No encontré un tarifario de «${args.proveedor}».`, tarifarios_disponibles: tarifarios.filter((t) => t.estado !== "desactivado").slice(0, 20).map((t) => t.nombre), instruccion: "Pregúntale cuál es el correcto, o sugiérele crear uno nuevo con «Nuevo con IA» en Base de tarifas." };
+    }
+    const vigentes = candidatos.filter((t) => t.estado === "en_uso" || t.estado === "por_vencer");
+    const posibles = vigentes.length ? vigentes : candidatos;
+    if (posibles.length > 1) return { ambiguo: true, tarifarios: posibles.map((t) => t.nombre), instruccion: "Pregúntale cuál de estos tarifarios quiere actualizar y vuelve a llamar con el parámetro 'tarifario'." };
+    const elegido = posibles[0];
+    let extraccion;
+    try {
+      extraccion = await extraerTarifarioDeDocumento(archivo);
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "No pude leer el documento." };
+    }
+    const propuesta = await proponerActualizacion(elegido.id, extraccion);
+    if (!propuesta) return { error: "No encontré ese tarifario." };
+    const r = resumenCambios(propuesta.cambios);
+    adjuntos.push({ tipo: "actualizacion_tarifa", tarifarioId: elegido.id, tarifarioNombre: elegido.nombre, nuevos: r.nuevos, cambian: r.cambian, iguales: r.iguales, propuesta });
+    return {
+      tarifario: elegido.nombre, ...r,
+      vigente_hasta_segun_documento: propuesta.vigencia_hasta || null,
+      ejemplos: propuesta.cambios.filter((c) => c.estado !== "igual").slice(0, 6).map((c) => `${c.etiqueta}: ${c.anterior?.costo ?? "nuevo"} → ${c.fila.costo}`),
+      instruccion: "Resume en pocas líneas qué cambia. Debajo aparece la tarjeta «Revisar y aplicar»; todavía NO se aplicó nada. Si el documento no trae fecha de vigencia, pregúntale hasta cuándo valen estas tarifas.",
+    };
+  },
+};
+
 /** Herramientas disponibles según el rol: la de otros usuarios solo se le ofrece a un administrador. */
 export function herramientasDisponibles(esAdmin: boolean): HerramientaIA[] {
   const base = [buscarCotizaciones, obtenerUltimaCotizacion, resumenMetricas, buscarTarifas, buscarProveedor, buscarTarifarios, buscarClientes, buscarFletesHerramienta, crearCotizacion];
-  return esAdmin ? [...base, cotizacionesPorUsuario] : base;
+  return esAdmin ? [...base, cotizacionesPorUsuario, actualizarTarifario] : base;
 }

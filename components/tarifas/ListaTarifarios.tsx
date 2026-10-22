@@ -14,6 +14,7 @@ import { ETIQUETA_ESTADO, textoVencimiento, type EstadoTarifario } from "@/lib/t
 import { archivarTarifario, eliminarTarifario, establecerVigenciaTarifario } from "@/lib/tarifas/acciones";
 import { DialogoTarifario } from "./DialogoTarifario";
 import { DialogoTarifarioIA } from "./DialogoTarifarioIA";
+import { BotonActualizarTarifa } from "./DialogoActualizarTarifa";
 import { Proveedores } from "./Proveedores";
 import { estiloSeccion } from "./estiloServicio";
 import { cn } from "@/lib/utils";
@@ -172,6 +173,7 @@ export function ListaTarifarios({ tarifarios, proveedores }: Props) {
         </Selector>
         <div className="ml-auto flex gap-2">
           <Proveedores proveedores={proveedores} />
+          <BotonActualizarTarifa tarifarios={tarifarios} />
           <DialogoTarifarioIA proveedores={proveedores} />
           <DialogoTarifario proveedores={proveedores}>
             <Button><Plus /> Nuevo tarifario</Button>
@@ -213,6 +215,7 @@ export function ListaTarifarios({ tarifarios, proveedores }: Props) {
           <div className="flex flex-wrap items-baseline gap-2 border-b pb-1.5">
             <h2 className="text-lg font-semibold text-primary">{g.nombre}</h2>
             <span className="text-xs text-muted-foreground">{g.actuales.length} {g.actuales.length === 1 ? "tarifario actual" : "tarifarios actuales"}{g.anteriores.length > 0 ? ` · ${g.anteriores.length} ${g.anteriores.length === 1 ? "anterior" : "anteriores"}` : ""}</span>
+            <span className="ml-auto"><BotonActualizarTarifa tarifarios={tarifarios} tarifarioInicial={(g.actuales[0] ?? g.anteriores[0])?.id} etiqueta={`Actualizar ${g.clave === "propio" ? "" : "tarifa de "}${g.clave === "propio" ? "con IA" : g.nombre}`} /></span>
           </div>
           {g.actuales.length > 0 ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

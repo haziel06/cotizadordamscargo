@@ -5,7 +5,7 @@ import { extraerCabeceraCotizacion, type CabeceraExtraida } from "./cotizacionIA
 export type ResultadoCabecera = { ok: true; datos: CabeceraExtraida } | { ok: false; error: string };
 
 const TIPOS_ACEPTADOS = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
-const MAX_BYTES = 15 * 1024 * 1024;
+const MAX_BYTES = 4 * 1024 * 1024; // tope real por envío en Vercel
 
 /** Arma el encabezado de una cotización desde una descripción y/o un documento adjunto. Nunca guarda nada por sí sola. */
 export async function extraerCabeceraIA(form: FormData): Promise<ResultadoCabecera> {
@@ -18,7 +18,7 @@ export async function extraerCabeceraIA(form: FormData): Promise<ResultadoCabece
   if (!descripcion && !tieneArchivo) return { ok: false, error: "Describe el envío o adjunta un documento." };
 
   if (tieneArchivo) {
-    if ((archivo as File).size > MAX_BYTES) return { ok: false, error: "Máximo 15 MB." };
+    if ((archivo as File).size > MAX_BYTES) return { ok: false, error: "Máximo 4 MB (las fotos grandes se reducen solas; si es un PDF, súbelo por partes)." };
     if (!TIPOS_ACEPTADOS.includes((archivo as File).type)) return { ok: false, error: "Solo PDF, PNG, JPG o WEBP." };
   }
 

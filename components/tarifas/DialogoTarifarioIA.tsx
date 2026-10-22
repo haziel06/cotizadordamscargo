@@ -11,6 +11,7 @@ import { formatoFecha, hoyIso } from "@/lib/calculo/formato";
 import type { Proveedor } from "@/lib/supabase/tipos";
 import { guardarTarifario, guardarConcepto, guardarRuta, guardarProveedor, subirDocumentoTarifario, type DatosTarifario } from "@/lib/tarifas/acciones";
 import { extraerTarifarioIA } from "@/lib/ia/tarifarioAcciones";
+import { ACEPTA_DOCUMENTOS } from "@/lib/ia/documento-tipos";
 import { coincideAlgunProveedor, coincideProveedor, type FilaExtraida } from "@/lib/ia/tarifarioIA";
 
 interface Props { proveedores: Proveedor[] }
@@ -155,7 +156,7 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
         {paso === "subir" && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">Sube la foto o el PDF de la hoja de tarifas, en el formato que venga. La IA lee la empresa, la vigencia y todas las tarifas; tú revisas, decides el margen y confirmas antes de guardar nada.</p>
-            <ZonaArchivo archivo={archivo} onArchivo={setArchivo} texto="Elige o arrastra un PDF, PNG, JPG o WEBP (máx. 15 MB)" />
+            <ZonaArchivo archivo={archivo} onArchivo={setArchivo} aceptar={ACEPTA_DOCUMENTOS} texto="Elige o arrastra foto, PDF o Excel (máx. 4 MB; las fotos grandes se reducen solas)" />
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setAbierto(false)}>Cancelar</Button>
@@ -260,7 +261,7 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
             <details className="rounded-lg border p-2 text-sm">
               <summary className="cursor-pointer font-medium">¿Faltan tarifas? Agrega otra página o imagen</summary>
               <div className="mt-2 space-y-2">
-                <ZonaArchivo archivo={extra} onArchivo={setExtra} texto="Arrastra otra página o parte del mismo tarifario" />
+                <ZonaArchivo archivo={extra} onArchivo={setExtra} aceptar={ACEPTA_DOCUMENTOS} texto="Arrastra otra página o parte del mismo tarifario" />
                 <Button size="sm" variant="outline" disabled={pendiente || !extra} onClick={() => extra && leer(extra, true)}>{pendiente ? "Leyendo…" : "Leer y sumar estas filas"}</Button>
               </div>
             </details>

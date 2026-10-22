@@ -12,11 +12,19 @@ export const rutaCoincideOrigen = (r: Pick<TarifaRuta, "pais" | "origen" | "via"
   return palabrasOrigen.length > 0 && palabrasOrigen.every((p) => h.includes(p));
 };
 
-/** Si el tipo de carga es un contenedor (FCL 20GP…), solo las tarifas de ese tamaño; sin variante o sin tipo, todas. */
-export const varianteSirve = (r: Pick<TarifaRuta, "variante">, tipoCarga?: string | null) => {
-  if (!r.variante || !tipoCarga) return true;
-  const v = claveContenedor(r.variante);
-  return !/^(20|40|45)/.test(v) || claveContenedor(tipoCarga).includes(v);
+/**
+ * Si el tipo de carga es un contenedor (FCL 20GP…), solo las tarifas de ese tamaño; sin tipo, todas.
+ * Las filas viejas no tienen variante y traen el tamaño dentro de «vía» ("PIL 20GP"): se lee de ahí.
+ */
+export const varianteSirve = (r: Pick<TarifaRuta, "variante" | "via">, tipoCarga?: string | null) => {
+  if (!tipoCarga) return true;
+  if (r.variante) {
+    const v = claveContenedor(r.variante);
+    return !/^(20|40|45)/.test(v) || claveContenedor(tipoCarga).includes(v);
+  }
+  const tamanos = [...(r.via ?? "").matchAll(/(?<!\d)(20|40|45)(?!\d)/g)].map((m) => m[1]);
+  const pedido = tipoCarga.match(/(?<!\d)(20|40|45)(?!\d)/)?.[1];
+  return !tamanos.length || !pedido || tamanos.includes(pedido);
 };
 
 export const ventaRuta = (r: TarifaRuta, moneda: Moneda, recargos: Recargos) =>

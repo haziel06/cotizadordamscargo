@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { hoyIso } from "@/lib/calculo/formato";
 import { extraerJsonDeDocumento } from "./proveedores/gemini";
+import type { DocumentoIA } from "./documento";
 
 /** Esquema que le pedimos a Gemini (formato Structured Output: mayúsculas tipo OpenAPI). */
 const ESQUEMA_GEMINI = {
@@ -128,10 +129,10 @@ export function coincideProveedor<T extends { nombre: string }>(sugerido: string
 }
 
 /** Llama a Gemini con el PDF/foto en base64 y valida la respuesta con Zod antes de devolverla. */
-export async function extraerTarifarioDeDocumento(archivoBase64: string, mimeType: string): Promise<ExtraccionTarifario> {
+export async function extraerTarifarioDeDocumento(doc: Pick<DocumentoIA, "base64" | "mimeType" | "texto">): Promise<ExtraccionTarifario> {
   let textoJson: string;
   try {
-    textoJson = await extraerJsonDeDocumento({ instruccion: instruccion(hoyIso()), archivoBase64, mimeType, esquemaJson: ESQUEMA_GEMINI, maxTokens: 32768 });
+    textoJson = await extraerJsonDeDocumento({ instruccion: instruccion(hoyIso()), archivoBase64: doc.base64, mimeType: doc.mimeType, texto: doc.texto, esquemaJson: ESQUEMA_GEMINI, maxTokens: 32768 });
   } catch (e) {
     if (e instanceof Error && e.message.includes("se cortó")) {
       throw new Error("El documento tiene tantas tarifas que no cabe en una sola lectura. Súbelo por partes (una página o sección a la vez) y usa «Agregar otra página» para sumarlas.");
