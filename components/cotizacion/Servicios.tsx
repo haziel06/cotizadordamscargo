@@ -10,6 +10,7 @@ import { formatoMoneda, formatoFecha } from "@/lib/calculo/formato";
 import type { LineaEditable } from "@/lib/cotizaciones/esquema";
 import { cantidadPorUnidad, conceptoAplicaAServicio, conceptosCourier } from "@/lib/cotizaciones/armado";
 import { buscarFletes, palabras } from "@/lib/cotizaciones/fletes";
+import { estiloSeccion } from "@/components/tarifas/estiloServicio";
 import type { Catalogo } from "@/lib/tarifas/consultas";
 import type { Concepto, SegmentoCourier, TarifaRuta, TipoServicio } from "@/lib/supabase/tipos";
 import type { Categoria, Moneda, Recargos, TipoMargen, Unidad } from "@/lib/calculo/tipos";
@@ -299,9 +300,10 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
             ? buscarFletes({ rutas: catalogo.rutas, tarifarios: rutasVisibles, origen: origen ?? "", tipoCarga, recargos }).map((x) => ({ r: x.ruta, t: x.tarifario, venta: x.venta }))
             : [];
           return (
-            <section key={sec} className={cn("rounded-lg border", esAjena && "border-dashed")}>
+            <section key={sec} className={cn("rounded-lg border border-l-4", estiloSeccion(sec).barra, esAjena && "border-dashed")}>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left" onClick={() => setAbiertas((a) => ({ ...a, [sec]: !abierta }))}>
                 {abierta ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+                <span className={cn("inline-flex size-6 items-center justify-center rounded", estiloSeccion(sec).chip)}>{(() => { const I = estiloSeccion(sec).icono; return <I className="size-3.5" />; })()}</span>
                 <span className="font-semibold text-primary">{info.texto}</span>
                 <span className="text-xs text-muted-foreground">{info.descripcion} · {info.moneda}</span>
                 {propias.length > 0 && <span className="ml-auto rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{propias.length} en la cotización</span>}
