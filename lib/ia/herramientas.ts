@@ -229,7 +229,7 @@ const buscarFletesHerramienta: HerramientaIA = {
       };
     }
     const detalle = (o: (typeof opciones)[number]) =>
-      [o.tarifario.nombre, o.ruta.variante, textoVia(o.ruta.via), o.ruta.transito ? textoTransito(o.ruta.transito) : null].filter(Boolean).join(" · ");
+      [o.tarifario.nombre, o.ruta.naviera, o.ruta.variante, textoVia(o.ruta.via), o.ruta.transito ? textoTransito(o.ruta.transito) : null].filter(Boolean).join(" · ");
     const precio = (o: (typeof opciones)[number]) => `${formatoMoneda(o.venta, o.tarifario.moneda)} / ${textoUnidad(o.ruta.unidad).replace("por ", "")}`;
     adjuntos.push({
       tipo: "opciones_flete",
@@ -239,7 +239,7 @@ const buscarFletesHerramienta: HerramientaIA = {
     return {
       encontrados: opciones.length,
       opciones: opciones.map((o, i) => ({
-        n: i + 1, ref: o.ruta.id.slice(0, 8), tarifario: o.tarifario.nombre, origen: o.ruta.origen, pais: o.ruta.pais, variante: o.ruta.variante,
+        n: i + 1, ref: o.ruta.id.slice(0, 8), tarifario: o.tarifario.nombre, naviera: o.ruta.naviera, origen: o.ruta.origen, pais: o.ruta.pais, variante: o.ruta.variante,
         via: textoVia(o.ruta.via), transito: o.ruta.transito ? textoTransito(o.ruta.transito) : null, precio_venta: precio(o),
         vigente_hasta: catalogo.tarifarios.find((t) => t.id === o.ruta.tarifario_id)?.vigencia_hasta ?? null,
         ...(sesion.esAdmin ? { costo: o.ruta.costo } : {}),

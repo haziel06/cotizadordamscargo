@@ -19,8 +19,11 @@ export const rutaCoincideOrigen = (r: Pick<TarifaRuta, "pais" | "origen" | "via"
 export const varianteSirve = (r: Pick<TarifaRuta, "variante" | "via">, tipoCarga?: string | null) => {
   if (!tipoCarga) return true;
   if (r.variante) {
-    const v = claveContenedor(r.variante);
-    return !/^(20|40|45)/.test(v) || claveContenedor(tipoCarga).includes(v);
+    // "40GP/HQ" es una sola columna que sirve para 40GP y para 40HQ: se prueba cada parte con el número de la primera.
+    const partes = r.variante.split(/[/,]/).map((p) => p.trim()).filter(Boolean);
+    const numero = partes[0]?.match(/^\d+/)?.[0] ?? "";
+    const claves = partes.map((p) => claveContenedor(/^\d/.test(p) ? p : `${numero}${p}`));
+    return !claves.some((v) => /^(20|40|45)/.test(v)) || claves.some((v) => claveContenedor(tipoCarga).includes(v));
   }
   const tamanos = [...(r.via ?? "").matchAll(/(?<!\d)(20|40|45)(?!\d)/g)].map((m) => m[1]);
   const pedido = tipoCarga.match(/(?<!\d)(20|40|45)(?!\d)/)?.[1];

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { hoyIso } from "@/lib/calculo/formato";
 import { extraerJsonDeDocumento } from "./proveedores/gemini";
 import type { DocumentoIA } from "./documento";
+import { paisDePuerto, separarPuertos } from "./puertos";
 
 /** Esquema que le pedimos a Gemini (formato Structured Output: mayúsculas tipo OpenAPI). */
 const ESQUEMA_GEMINI = {
@@ -22,8 +23,9 @@ const ESQUEMA_GEMINI = {
         properties: {
           tipo: { type: "STRING", enum: ["ruta", "concepto"], description: "'ruta' si es un tramo origen→destino (flete), 'concepto' si es un cargo fijo con nombre (ej. 'Documentación', 'BL', 'Manejo')" },
           nombre: { type: "STRING", description: "Nombre del cargo (solo para 'concepto')" },
-          pais: { type: "STRING", description: "País del origen si el documento lo indica o es evidente (ej. China para Xiamen)" },
-          origen: { type: "STRING" },
+          pais: { type: "STRING", description: "País del origen. Si el documento no lo dice, dedúcelo por la ciudad (Shanghai, Shenzhen, Ningbo, Qingdao, Tianjin, Xiamen, Dalian… son China); nunca lo dejes vacío en una ruta" },
+          naviera: { type: "STRING", description: "Línea naviera de esta fila (columna 'Naviera', ej. COSCO, CMA, PIL, ONE, WHL, YML, MSC, EMC, HMM, MSK), tal como está escrita" },
+          origen: { type: "STRING", description: "UN solo puerto de origen. Si la celda lista varios puertos (ej. 'shanghai shenzhen qingdao tianjing ningbo'), crea una fila por cada puerto con el mismo precio" },
           destino: { type: "STRING" },
           variante: { type: "STRING", description: "Qué precio de la fila es, cuando un mismo tramo/cargo tiene varias columnas: tamaño de contenedor ('20GP', '40HQ'), escala de peso ('45-100 kg', '+1000 kg'), tipo de carga, etc." },
           via: { type: "STRING", description: "Puerto de trasbordo si aplica" },
@@ -44,6 +46,7 @@ const esquemaFila = z.object({
   tipo: z.enum(["ruta", "concepto"]),
   nombre: z.string().trim().optional().default(""),
   pais: z.string().trim().optional().default(""),
+  naviera: z.string().trim().optional().default(""),
   variante: z.string().trim().optional().default(""),
   origen: z.string().trim().optional().default(""),
   destino: z.string().trim().optional().default(""),
@@ -76,7 +79,9 @@ const instruccion = (hoy: string) => [
   `Hoy es ${hoy}; úsalo solo para completar años que falten en las fechas del documento.`,
   "EMPRESA: 'proveedor_sugerido' es la empresa que emite la hoja. Búscala en el logo, membrete, encabezado, pie, sello, firma de correo o dominio del correo. Cópiala exactamente como está escrita (ej. 'CHARTER LINK', 'HYDE'), sin traducir, sin agregarle palabras y sin inventar. Lista en 'nombres_empresa_vistos' todos los nombres de empresa que veas escritos, incluidas las líneas navieras citadas.",
   "VIGENCIA: busca cualquier frase de validez ('válido hasta', 'valid until', 'rates valid', 'effective', 'vigente del…al…', 'sujeto a cambio después de', 'expires'). Conviértela a 'vigencia_desde' y 'vigencia_hasta' (AAAA-MM-DD). Si solo dice un mes ('Octubre 2026') usa el primer y último día de ese mes. Si dice 'válido hasta fin de mes', usa el último día del mes. Si no hay ninguna fecha, déjalas vacías: nunca las inventes.",
+  "FECHAS SIN AÑO: un rango como '22/10~31/10' o '22/10-31/10' es día/mes, 'desde~hasta'; usa el año de hoy (o el siguiente si ese mes ya quedó muy atrás). Si cada fila trae su propia vigencia, usa la que más se repite. La fecha que sale en el documento es la que debe quedar en 'vigencia_desde' y 'vigencia_hasta'.",
   "FILAS: extrae CADA tarifa que veas, sin resumir ni saltarte ninguna, aunque sean cientos. Una fila por tramo o cargo.",
+  "PUERTOS: si una celda de origen (POL) lista varios puertos, NO la copies completa en una sola fila: crea una fila por cada puerto, con el mismo precio, naviera y tránsito. Pon siempre el país de cada puerto (China para Shanghai, Shenzhen, Qingdao, Tianjin, Ningbo, Xiamen, Dalian, Guangzhou, Nansha, Huangpu, Shekou…). La columna de naviera (COSCO, CMA, PIL, ONE, WHL, YML, MSC, EMC, HMM, MSK…) va en 'naviera', y el nombre de la columna de precio (20GP, 40GP/HQ, NOR…) en 'variante'. Datos que no son precio, como 'Tiempo libre' o 'remark', van en 'notas' solo si aportan.",
   "Usa tipo 'ruta' para tramos con origen y destino (fletes marítimos, aéreos, terrestres). Usa tipo 'concepto' para cargos con nombre propio que no dependen de una ruta (documentación, manejo, BL, THC, seguro, almacenaje, etc.).",
   "Si un mismo tramo o cargo tiene VARIAS columnas de precio (20GP/40GP/40HQ, escalas de peso como 45 kg / 100 kg / 500 kg, tipos de carga), crea una fila por cada precio y pon en 'variante' el nombre exacto de la columna.",
   "'costo' es el número tal como aparece, SIN agregar margen ni impuestos: solo transcribe. Si una celda dice 'consultar', 'TBC' o está vacía, no crees esa fila. Usa el punto como decimal y sin separador de miles.",
@@ -128,6 +133,18 @@ export function coincideProveedor<T extends { nombre: string }>(sugerido: string
   return mejor?.p;
 }
 
+/**
+ * Red de seguridad sobre lo que devuelve la IA: una celda con varios puertos se vuelve una fila por puerto, y el país
+ * se deduce de la ciudad cuando falta (todo "Shenzhen" es China aunque el documento no lo diga).
+ */
+export function expandirFilas(filas: FilaExtraida[]): FilaExtraida[] {
+  return filas.flatMap((f) => {
+    if (f.tipo !== "ruta") return [f];
+    const puertos = separarPuertos(f.origen);
+    return (puertos.length ? puertos : [f.origen]).map((origen) => ({ ...f, origen, pais: f.pais || paisDePuerto(origen) || "" }));
+  });
+}
+
 /** Llama a Gemini con el PDF/foto en base64 y valida la respuesta con Zod antes de devolverla. */
 export async function extraerTarifarioDeDocumento(doc: Pick<DocumentoIA, "base64" | "mimeType" | "texto">): Promise<ExtraccionTarifario> {
   let textoJson: string;
@@ -147,5 +164,5 @@ export async function extraerTarifarioDeDocumento(doc: Pick<DocumentoIA, "base64
   }
   const parsed = esquemaExtraccion.safeParse(bruto);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "No se pudo interpretar el documento.");
-  return parsed.data;
+  return { ...parsed.data, filas: expandirFilas(parsed.data.filas) };
 }

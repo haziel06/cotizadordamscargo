@@ -15,7 +15,7 @@ type Enums = {
 type ClienteRow = {
   id: string; nombre: string; nit: string | null; contacto_nombre: string | null;
   contacto_email: string | null; contacto_telefono: string | null; notas: string | null;
-  activo: boolean; created_at: string; empresa: string | null;
+  activo: boolean; created_at: string; empresa: string | null; consignatario: string | null; direccion: string | null;
 };
 type ConceptoRow = {
   id: string; proveedor_id: string | null; nombre: string; categoria: Enums["categoria_concepto"];
@@ -36,7 +36,7 @@ type TarifaRutaRow = {
   id: string; tarifario_id: string; pais: string | null; origen: string; destino: string; via: string | null;
   costo: number | null; unidad: Enums["unidad_concepto"]; minimo: number | null; transito: string | null;
   tipo_margen: Enums["tipo_margen"]; valor_margen: number; aplica_recargos: boolean; notas: string | null;
-  variante: string | null; archivado_at: string | null; created_at: string;
+  variante: string | null; naviera: string | null; archivado_at: string | null; created_at: string;
 };
 type TarifaClienteRow = {
   id: string; cliente_id: string; concepto_id: string; tipo_margen: Enums["tipo_margen"]; valor_margen: number;

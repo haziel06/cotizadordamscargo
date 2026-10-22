@@ -109,7 +109,7 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
       const guardarFila = async (f: Fila, i: number) => {
         if (f.tipo === "ruta") {
           return guardarRuta({
-            tarifario_id: tarifarioId, pais: f.pais || null, origen: f.origen || "—", destino: f.destino || "Guatemala", via: f.via || null, variante: f.variante || null,
+            tarifario_id: tarifarioId, pais: f.pais || null, origen: f.origen || "—", destino: f.destino || "Guatemala", via: f.via || null, naviera: f.naviera || null, variante: f.variante || null,
             costo: f.costo, unidad: f.unidad, minimo: f.minimo, transito: f.transito || null,
             tipo_margen: f.tipo_margen, valor_margen: f.valor_margen, aplica_recargos: f.aplica_recargos, notas: f.notas || null,
           });
@@ -148,7 +148,7 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
       <DialogTrigger nativeButton={false} render={<span className="inline-flex" />}>
         <Button variant="outline"><Sparkles /> Nuevo con IA</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-5xl">
+      <DialogContent className="sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Nuevo tarifario con IA</DialogTitle>
         </DialogHeader>
@@ -222,6 +222,7 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
                     <th className="p-1.5">Tipo</th>
                     <th className="p-1.5">Nombre / Origen</th>
                     <th className="p-1.5">Destino</th>
+                    <th className="p-1.5">Naviera</th>
                     <th className="p-1.5">Variante</th>
                     <th className="p-1.5">Costo</th>
                     <th className="p-1.5">Unidad</th>
@@ -242,6 +243,7 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
                       </td>
                       <td className="p-1.5"><Entrada className="h-7 w-32" value={f.tipo === "ruta" ? f.origen : f.nombre} onChange={(e) => setFila(i, f.tipo === "ruta" ? "origen" : "nombre", e.target.value)} /></td>
                       <td className="p-1.5">{f.tipo === "ruta" ? <Entrada className="h-7 w-28" value={f.destino} onChange={(e) => setFila(i, "destino", e.target.value)} /> : <span className="text-muted-foreground">—</span>}</td>
+                      <td className="p-1.5">{f.tipo === "ruta" ? <Entrada className="h-7 w-20" value={f.naviera} onChange={(e) => setFila(i, "naviera", e.target.value)} /> : <span className="text-muted-foreground">—</span>}</td>
                       <td className="p-1.5"><Entrada className="h-7 w-20" value={f.variante} placeholder="40HQ" onChange={(e) => setFila(i, "variante", e.target.value)} /></td>
                       <td className="p-1.5"><Entrada type="number" className="h-7 w-20" value={f.costo} onChange={(e) => setFila(i, "costo", Number(e.target.value))} /></td>
                       <td className="p-1.5">

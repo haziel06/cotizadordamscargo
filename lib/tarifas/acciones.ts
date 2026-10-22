@@ -161,6 +161,7 @@ const esquemaRuta = z.object({
   destino: z.string().trim().min(1).default("Guatemala"),
   via: texto,
   variante: texto.default(null),
+  naviera: texto.default(null),
   costo: num,
   unidad: z.enum(["envio", "contenedor", "kg", "cbm", "libra", "pie_cubico", "guia", "factura"]),
   minimo: num,

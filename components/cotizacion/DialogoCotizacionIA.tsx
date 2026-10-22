@@ -51,7 +51,7 @@ export function DialogoCotizacionIA() {
       <DialogTrigger nativeButton={false} render={<span className="inline-flex" />}>
         <Button variant="outline"><Sparkles /> Crear con IA</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Crear cotización con IA</DialogTitle>
         </DialogHeader>

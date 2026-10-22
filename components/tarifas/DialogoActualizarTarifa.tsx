@@ -44,6 +44,7 @@ export function DialogoActualizarTarifa({ tarifarios = [], tarifarioInicial, pro
   const [hasta, setHasta] = useState(propuestaInicial?.vigencia_hasta ?? "");
   const [desde, setDesde] = useState(propuestaInicial?.vigencia_desde ?? "");
   const [respaldo, setRespaldo] = useState(true);
+  const [modo, setModo] = useState<"version" | "reemplazar">("version");
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<string | null>(null);
   const [pendiente, startTransition] = useTransition();
@@ -64,6 +65,7 @@ export function DialogoActualizarTarifa({ tarifarios = [], tarifarioInicial, pro
       setFilas(aFilas(r.propuesta));
       setHasta(r.propuesta.vigencia_hasta);
       setDesde(r.propuesta.vigencia_desde);
+      setModo("version");
       setPaso("revisar");
     });
   };
@@ -75,26 +77,28 @@ export function DialogoActualizarTarifa({ tarifarios = [], tarifarioInicial, pro
     setError(null);
     startTransition(async () => {
       const r = await aplicarActualizacionAccion({
-        tarifarioId: propuesta.tarifarioId, vigencia_desde: desde || null, vigencia_hasta: hasta, crearRespaldo: respaldo,
+        tarifarioId: propuesta.tarifarioId, modo: empiezaDespues ? modo : "reemplazar", vigencia_desde: desde || null, vigencia_hasta: hasta, crearRespaldo: respaldo,
         cambios: elegidas.map((f) => ({
           tipo: f.tipo, estado: f.estado === "nuevo" ? "nuevo" : "cambia", existenteId: f.existenteId, tipo_margen: "porcentaje", valor_margen: f.valor_margen,
           fila: { ...f.fila, costo: f.costoNuevo, minimo: f.fila.minimo },
         })),
       });
       if (!r.ok) return setError(r.error);
-      setResultado(`${r.actualizadas} precios actualizados, ${r.nuevas} nuevos.${r.respaldo ? ` La versión anterior quedó guardada como «${r.respaldo}».` : ""}`);
+      setResultado(`${r.actualizadas} precios actualizados, ${r.nuevas} nuevos. ${r.aviso}`);
       setPaso("listo");
       router.refresh();
     });
   };
 
   const resumen = propuesta ? resumenCambios(propuesta.cambios) : null;
+  // Si las nuevas tarifas empiezan en el futuro, pisar el tarifario actual lo dejaría sin poder usarse hasta esa fecha.
+  const empiezaDespues = Boolean(desde && desde > hoyIso());
   const elegibles = tarifarios.filter((t) => t.estado !== "desactivado");
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reiniciar(); }}>
       {children && <DialogTrigger nativeButton={false} render={<span className="inline-flex" />}>{children}</DialogTrigger>}
-      <DialogContent className="max-w-5xl">
+      <DialogContent className="sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>{propuesta ? `Actualizar «${propuesta.tarifarioNombre}»` : "Actualizar un tarifario con IA"}</DialogTitle>
         </DialogHeader>
@@ -140,6 +144,16 @@ export function DialogoActualizarTarifa({ tarifarios = [], tarifarioInicial, pro
               </div>
             </div>
 
+            {empiezaDespues ? (
+              <div className="space-y-1.5 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                <div className="font-medium text-primary">Estas tarifas empiezan el {formatoFecha(desde)}: ¿cómo las guardo?</div>
+                <label className="flex items-start gap-2"><input type="radio" checked={modo === "version"} onChange={() => setModo("version")} className="mt-1" />
+                  <span><strong>Crear una versión nueva</strong> (recomendado). La tarifa actual sigue valiendo hasta su fecha y la nueva entra sola el {formatoFecha(desde)}.</span></label>
+                <label className="flex items-start gap-2"><input type="radio" checked={modo === "reemplazar"} onChange={() => setModo("reemplazar")} className="mt-1" />
+                  <span>Reemplazar la actual. Ojo: no se podrá cotizar con este tarifario hasta el {formatoFecha(desde)}.</span></label>
+              </div>
+            ) : null}
+
             {filas.length === 0 ? (
               <p className="rounded-lg border p-6 text-center text-sm text-muted-foreground">Todos los precios del documento ya están así en el tarifario. Solo se actualizaría la fecha de vigencia.</p>
             ) : (
@@ -163,7 +177,9 @@ export function DialogoActualizarTarifa({ tarifarios = [], tarifarioInicial, pro
                 </table>
               </div>
             )}
-            <label className="flex items-center gap-2 text-sm"><Casilla checked={respaldo} onChange={(e) => setRespaldo(e.target.checked)} /> Guardar una copia de la versión anterior (queda en «versiones anteriores» del proveedor)</label>
+            {(!empiezaDespues || modo === "reemplazar") && (
+              <label className="flex items-center gap-2 text-sm"><Casilla checked={respaldo} onChange={(e) => setRespaldo(e.target.checked)} /> Guardar una copia de la versión anterior (queda en «versiones anteriores» del proveedor)</label>
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex justify-between gap-2">
               {propuestaInicial ? <span /> : <Button variant="ghost" onClick={reiniciar}>Volver a subir</Button>}

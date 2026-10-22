@@ -43,7 +43,7 @@ export function DialogoCliente({ cliente, children, onGuardado }: Props) {
   return (
     <Dialog open={abierto} onOpenChange={setAbierto}>
       <DialogTrigger nativeButton={false} render={<span className="inline-flex" />}>{children}</DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{cliente ? "Editar cliente" : "Nuevo cliente"}</DialogTitle>
         </DialogHeader>

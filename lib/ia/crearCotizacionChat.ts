@@ -127,7 +127,7 @@ export async function crearCotizacionDesdeChat(datos: DatosCotizacionChat, sesio
       nombre: `Flete ${tarifarioRuta.seccion === "flete_aereo" ? "aéreo" : "marítimo"} ${ruta.origen} → ${ruta.destino}${ruta.variante ? ` (${ruta.variante})` : ""}`,
       categoria: "internacional", moneda: tarifarioRuta.moneda, cantidad: cantidadLinea(ruta.unidad), costo_unitario: Number(ruta.costo ?? 0),
       tipo_margen: ruta.tipo_margen, valor_margen: Number(ruta.valor_margen), lleva_iva: true, aplica_recargos: ruta.aplica_recargos, cuenta_ajena: false,
-      nota, nota_visible: true, proveedor_nombre: tarifarioRuta.proveedor_id ? (provNombre.get(tarifarioRuta.proveedor_id) ?? null) : null,
+      nota, nota_visible: true, proveedor_nombre: [tarifarioRuta.proveedor_id ? provNombre.get(tarifarioRuta.proveedor_id) : tarifarioRuta.nombre, ruta.naviera].filter(Boolean).join(" · ") || null,
       ruta: `${ruta.origen} → ${ruta.destino}`,
     });
   }

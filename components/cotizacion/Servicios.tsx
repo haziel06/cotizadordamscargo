@@ -179,7 +179,7 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
         _clave: clave(), concepto_id: null, ruta_id: r.id, nombre: `Flete ${t?.seccion === "flete_aereo" ? "aéreo" : "marítimo"} ${r.origen} → ${r.destino}${r.variante ? ` (${r.variante})` : ""}`, categoria: "internacional", moneda: t?.moneda ?? "USD",
         cantidad: cantidadPara(r.unidad), costo_unitario: Number(r.costo ?? 0), tipo_margen: r.tipo_margen, valor_margen: Number(r.valor_margen),
         lleva_iva: true, aplica_recargos: r.aplica_recargos, cuenta_ajena: false, nota: [textoVia(r.via), r.transito ? `Tránsito ${r.transito} días` : null].filter(Boolean).join(" · ") || null,
-        nota_visible: true, proveedor_nombre: prov ?? null, ruta: `${r.origen} → ${r.destino}`, unidad: r.unidad, pendiente: r.costo == null, seccion: t?.seccion ?? "flete_maritimo",
+        nota_visible: true, proveedor_nombre: [prov ?? t?.nombre, r.naviera].filter(Boolean).join(" · ") || null, ruta: `${r.origen} → ${r.destino}`, unidad: r.unidad, pendiente: r.costo == null, seccion: t?.seccion ?? "flete_maritimo",
         minimo: r.minimo == null ? null : Number(r.minimo),
       },
     ]);
@@ -356,7 +356,8 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                             <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1.5 text-sm">
                               <span className="min-w-40 font-medium">{t.nombre}</span>
                               <span>{r.origen}</span>
-                              {r.variante && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">{r.variante}</span>}
+                              {r.naviera && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold">{r.naviera}</span>}
+                                {r.variante && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">{r.variante}</span>}
                               <span className="text-xs text-muted-foreground">{r.via && r.via !== "Direct" ? `vía ${r.via}` : "directo"}{r.transito ? ` · ${r.transito}${/[a-z]/i.test(r.transito) ? "" : " días"}` : ""}</span>
                               {i === 0 && comparables.length > 1 && <span className="rounded bg-green-100 px-1.5 py-0.5 text-[11px] text-green-900">más económico</span>}
                               <span className="num ml-auto font-semibold">{formatoMoneda(venta, t.moneda)} <span className="text-xs font-normal text-muted-foreground">/ {textoUnidad(r.unidad).replace("por ", "")}</span></span>
@@ -378,7 +379,7 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                   {rutasVisibles.map((t) => {
                     const rutas = catalogo.rutas.filter((r) => r.tarifario_id === t.id);
                     const q = (busquedaRuta[t.id] ?? "").toLowerCase();
-                    const filtradas = q ? rutas.filter((r) => `${r.pais ?? ""} ${r.origen} ${r.via ?? ""}`.toLowerCase().includes(q)).slice(0, 12) : [];
+                    const filtradas = q ? rutas.filter((r) => `${r.pais ?? ""} ${r.origen} ${r.naviera ?? ""} ${r.via ?? ""}`.toLowerCase().includes(q)).slice(0, 12) : [];
                     return (
                       <div key={t.id} className="rounded border bg-muted/30 p-2">
                         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -396,6 +397,7 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                               <li key={r.id} className="flex items-center gap-3 px-2 py-1 text-sm">
                                 <span className="w-24 text-muted-foreground">{r.pais}</span>
                                 <span className="font-medium">{r.origen}</span>
+                                {r.naviera && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold">{r.naviera}</span>}
                                 {r.variante && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">{r.variante}</span>}
                                 <span className="text-xs text-muted-foreground">{r.via && r.via !== "Direct" ? `vía ${r.via}` : "directo"} · {r.transito ?? "—"} días</span>
                                 <span className="num ml-auto">

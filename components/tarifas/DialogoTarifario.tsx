@@ -49,7 +49,7 @@ export function DialogoTarifario({ proveedores, tarifario, children }: Props) {
   return (
     <Dialog open={abierto} onOpenChange={setAbierto}>
       <DialogTrigger nativeButton={false} render={<span className="inline-flex" />}>{children}</DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{tarifario ? "Editar tarifario" : "Nuevo tarifario"}</DialogTitle>
         </DialogHeader>

@@ -56,7 +56,7 @@ export function Proveedores({ proveedores }: { proveedores: Proveedor[] }) {
   return (
     <Dialog>
       <DialogTrigger render={<Button variant="outline" />}>Proveedores</DialogTrigger>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Proveedores</DialogTitle>
         </DialogHeader>
