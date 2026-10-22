@@ -8,6 +8,7 @@ import { SECCIONES, conceptoAplica, infoSeccion, textoUnidad, type DefServicio }
 import { ventaLinea, ventaUnitariaLista } from "@/lib/calculo/linea";
 import { formatoMoneda, formatoFecha } from "@/lib/calculo/formato";
 import type { LineaEditable } from "@/lib/cotizaciones/esquema";
+import { cantidadPorUnidad, conceptosCourier } from "@/lib/cotizaciones/armado";
 import type { Catalogo } from "@/lib/tarifas/consultas";
 import type { Concepto, SegmentoCourier, TarifaRuta, TipoServicio } from "@/lib/supabase/tipos";
 import type { Categoria, Moneda, Recargos, TipoMargen, Unidad } from "@/lib/calculo/tipos";
@@ -47,7 +48,6 @@ const textoVia = (via: string | null) => {
   if (v === "indirect" || v === "indirecto") return "Servicio indirecto";
   return `Vía ${via}`;
 };
-const LB_POR_KG = 2.20462;
 const SIGUEN_MEDIDAS: Unidad[] = ["kg", "libra", "cbm", "pie_cubico"];
 
 /**
@@ -88,13 +88,7 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
   const tarifarioPorId = useMemo(() => new Map(catalogo.tarifarios.map((t) => [t.id, t])), [catalogo.tarifarios]);
 
   /** Cantidad según la unidad del concepto (spec §7.2-B, ampliada con libras). */
-  const cantidadPara = (u: Unidad) => {
-    if (u === "kg") return medidas.pesoCobrable || 1;
-    if (u === "libra") return medidas.pesoCobrable ? Math.round(medidas.pesoCobrable * LB_POR_KG * 100) / 100 : 1;
-    if (u === "cbm") return medidas.cbm || 1;
-    if (u === "pie_cubico") return medidas.cbm ? Math.round(medidas.cbm * 35.3147 * 100) / 100 : 1;
-    return 1;
-  };
+  const cantidadPara = (u: Unidad) => cantidadPorUnidad(u, medidas.pesoCobrable, medidas.cbm);
   // Las líneas por peso/volumen siguen a la carga hasta que alguien escribe la cantidad a mano.
   const medidasRef = useRef(medidas);
   useEffect(() => {
@@ -157,22 +151,9 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
    * y el almacenaje (Combex) como pago a tercero, aparte. Solo agrega lo que falte.
    */
   const armarCourier = (segmento: SegmentoCourier) => {
-    const marcadosAhora = new Set(lineas.map((l) => l.concepto_id));
-    const libras = medidas.pesoCobrable ? medidas.pesoCobrable * LB_POR_KG : 0;
-    const primero = (xs: Concepto[]) => xs.find((c) => !marcadosAhora.has(c.id));
-    const nuevas: Concepto[] = [];
-    const courier = primero(conceptosAplicables.filter((c) => c.seccion === "courier" && c.unidad === "libra"));
-    if (courier) nuevas.push(courier);
-    // Entrega según el peso: hasta 132 lb va incluida (línea en $0 para que el cliente lo vea).
-    const entregas = conceptosAplicables.filter((c) => c.seccion === "entrega_domicilio");
-    const entrega = primero(entregas.filter((c) => (c.rango_desde == null || libras >= Number(c.rango_desde)) && (c.rango_hasta == null || libras <= Number(c.rango_hasta)))) ?? primero(entregas);
-    if (entrega && !(fueraPerimetro && Number(entrega.costo) === 0 && Number(entrega.valor_margen) === 0)) nuevas.push(entrega);
-    if (segmento === "ticket") {
-      const docs = conceptosAplicables.filter((c) => c.seccion === "documentacion" && /tr[aá]mite/i.test(c.nombre));
-      const tramite = primero(docs.filter((c) => /courier|a[eé]reo|lcl/i.test(c.nombre))) ?? primero(docs);
-      if (tramite) nuevas.push(tramite);
-      for (const a of conceptosAplicables.filter((c) => c.seccion === "gastos_ajenos" || c.cuenta_ajena)) if (!marcadosAhora.has(a.id)) nuevas.push(a);
-    }
+    const nuevas = conceptosCourier(conceptosAplicables, {
+      segmento, pesoCobrable: medidas.pesoCobrable, fueraPerimetro, yaMarcados: new Set(lineas.map((l) => l.concepto_id)),
+    });
     if (!nuevas.length) return;
     onChange((ls) => [...ls, ...nuevas.filter((c) => !ls.some((l) => l.concepto_id === c.id)).map(lineaDesdeConcepto)]);
     setAbiertas((a) => ({ ...a, ...Object.fromEntries(nuevas.map((c) => [c.seccion, true])) }));

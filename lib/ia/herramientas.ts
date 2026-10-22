@@ -5,6 +5,7 @@ import { crearClienteServidor } from "@/lib/supabase/server";
 import { leerConfig } from "@/lib/config";
 import { ventaLinea } from "@/lib/calculo/linea";
 import { formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
+import { crearCotizacionDesdeChat, type DatosCotizacionChat } from "./crearCotizacionChat";
 import type { ContextoHerramienta, HerramientaIA } from "./tipos";
 
 /** Nunca deja salir costo/utilidad/margen a quien no sea admin: mismo criterio que el resto de la app. */
@@ -182,8 +183,40 @@ const cotizacionesPorUsuario: HerramientaIA = {
   },
 };
 
+const crearCotizacion: HerramientaIA = {
+  nombre: "crearCotizacion",
+  descripcion: "Crea una cotización (queda como borrador) y deja listos los botones para descargar el PDF y abrirla en el editor. Solo úsala cuando el empleado pida crear/hacer/armar una cotización y ya tengas los datos obligatorios; si falta alguno, NO la llames: pregúntaselo. Los precios los calcula el sistema con la base de tarifas (y las tarifas especiales del cliente si está guardado): tú nunca pasas ni inventas precios. Para courier, arma sola las líneas (libra, entrega y, en ticket, trámite aduanero).",
+  parametros: {
+    type: "object",
+    properties: {
+      cliente: { type: "string", description: "Nombre de la empresa o cliente (obligatorio)" },
+      servicio: { type: "string", enum: ["courier", "aereo", "maritimo_lcl", "maritimo_fcl", "terrestre", "aduanas"], description: "Servicio principal (obligatorio)" },
+      segmento_courier: { type: "string", enum: ["ticket", "consolidado", "documentos", "compras_internet"], description: "Solo courier. Si no se sabe, pasa valor_mercaderia y el sistema decide (más de $1,000 = ticket)" },
+      kilogramos: { type: "number", description: "Peso en kg (obligatorio en courier)" },
+      valor_mercaderia: { type: "number", description: "Valor de la mercadería en USD" },
+      bultos: { type: "number" },
+      medidas: { type: "string", description: "Dimensiones tal como las dijo el empleado" },
+      mercaderia: { type: "string", description: "Descripción de la mercadería" },
+      origen: { type: "string" },
+      destino: { type: "string", description: "Por defecto Guatemala" },
+      contacto: { type: "string", description: "Persona de contacto del cliente" },
+      telefono: { type: "string" },
+      fuera_perimetro: { type: "boolean", description: "Courier con entrega fuera del perímetro capitalino" },
+      notas_internas: { type: "string" },
+      conceptos_adicionales: { type: "array", items: { type: "string" }, description: "Nombres de otros servicios de la base de tarifas a incluir (ej. 'trámite aduanal'). Busca primero con buscarTarifas si no estás seguro del nombre." },
+    },
+    required: ["cliente", "servicio"],
+  },
+  async ejecutar(args, { sesion, adjuntos }: ContextoHerramienta) {
+    const r = await crearCotizacionDesdeChat(args as DatosCotizacionChat, sesion);
+    if (!r.ok) return r.faltan?.length ? { creada: false, faltan: r.faltan, instruccion: "Pídele esos datos al empleado; no los inventes." } : { creada: false, error: r.error };
+    adjuntos.push(r.adjunto);
+    return { creada: true, ...r.resumen, instruccion: "Dile el número y el total, y que abajo tiene los botones para descargar el PDF y abrirla. No escribas enlaces." };
+  },
+};
+
 /** Herramientas disponibles según el rol: la de otros usuarios solo se le ofrece a un administrador. */
 export function herramientasDisponibles(esAdmin: boolean): HerramientaIA[] {
-  const base = [buscarCotizaciones, obtenerUltimaCotizacion, resumenMetricas, buscarTarifas, buscarProveedor, buscarTarifarios];
+  const base = [buscarCotizaciones, obtenerUltimaCotizacion, resumenMetricas, buscarTarifas, buscarProveedor, buscarTarifarios, crearCotizacion];
   return esAdmin ? [...base, cotizacionesPorUsuario] : base;
 }

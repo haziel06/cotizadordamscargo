@@ -4,11 +4,12 @@ import { sesionActual } from "@/lib/sesion";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/tipos";
 import { preguntarAsistente, type MensajeChat } from "./asistente";
+import type { AdjuntoChat } from "./tipos";
 
 const esquemaHistorial = z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(2000) })).min(1).max(20);
 const MAX_CONVERSACIONES = 10;
 
-export type RespuestaAsistente = { ok: true; texto: string } | { ok: false; error: string };
+export type RespuestaAsistente = { ok: true; texto: string; adjuntos: AdjuntoChat[] } | { ok: false; error: string };
 
 export async function preguntarIA(historial: unknown): Promise<RespuestaAsistente> {
   const parsed = esquemaHistorial.safeParse(historial);
@@ -18,8 +19,8 @@ export async function preguntarIA(historial: unknown): Promise<RespuestaAsistent
   if (!sesion || !sesion.activo) return { ok: false, error: "Sesión vencida." };
 
   try {
-    const texto = await preguntarAsistente(sesion, parsed.data as MensajeChat[]);
-    return { ok: true, texto };
+    const { texto, adjuntos } = await preguntarAsistente(sesion, parsed.data as MensajeChat[]);
+    return { ok: true, texto, adjuntos };
   } catch {
     return { ok: false, error: "No pude conectarme con el asistente en este momento. Intenta de nuevo en un momento." };
   }

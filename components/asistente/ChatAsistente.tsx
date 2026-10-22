@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Bot, MessageSquarePlus, Send, Trash2, User } from "lucide-react";
+import Link from "next/link";
+import { Bot, Download, FileText, MessageSquarePlus, Send, Trash2, User } from "lucide-react";
+import type { AdjuntoChat } from "@/lib/ia/tipos";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -8,8 +10,9 @@ import { preguntarIA } from "@/lib/ia/acciones";
 import { cargarConversacionIA, eliminarConversacionIA, guardarConversacionIA, listarConversacionesIA, type ResumenConversacion } from "@/lib/ia/acciones";
 import { TextoFormateado } from "./TextoFormateado";
 
-interface Mensaje { role: "user" | "assistant"; content: string }
+interface Mensaje { role: "user" | "assistant"; content: string; adjuntos?: AdjuntoChat[] }
 
+const EJEMPLO_COTIZAR = "Hazme una cotización courier consolidado de 25 kg para un cliente";
 const PREGUNTAS_FRECUENTES = [
   "¿Cuántas cotizaciones llevo este mes?",
   "¿Cuál fue la última cotización de un cliente?",
@@ -17,6 +20,7 @@ const PREGUNTAS_FRECUENTES = [
   "¿Cuál es mi tasa de aceptación?",
   "¿Qué proveedores tenemos registrados?",
   "¿Qué tarifarios están por vencer?",
+  EJEMPLO_COTIZAR,
 ];
 
 export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
@@ -41,9 +45,9 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
     setMensajes(historial);
     setTexto("");
     startTransition(async () => {
-      const r = await preguntarIA(historial);
+      const r = await preguntarIA(historial.map(({ role, content }) => ({ role, content })));
       if (r.ok) {
-        const conRespuesta = [...historial, { role: "assistant" as const, content: r.texto }];
+        const conRespuesta = [...historial, { role: "assistant" as const, content: r.texto, ...(r.adjuntos.length ? { adjuntos: r.adjuntos } : {}) }];
         setMensajes(conRespuesta);
         const guardado = await guardarConversacionIA(conversacionId, conRespuesta);
         if (guardado.ok) {
@@ -108,7 +112,7 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           {mensajes.length === 0 && (
             <div className="space-y-3 text-sm text-muted-foreground">
-              <p>Pregúntame sobre cotizaciones, clientes, tarifas o proveedores{esAdmin ? " — o cuántas lleva alguien del equipo" : ""}. Ejemplos:</p>
+              <p>Pregúntame sobre cotizaciones, clientes, tarifas o proveedores{esAdmin ? " — o cuántas lleva alguien del equipo" : ""}. También puedo crear una cotización y darte el PDF. Ejemplos:</p>
               <div className="flex flex-wrap gap-2">
                 {PREGUNTAS_FRECUENTES.map((s) => (
                   <button key={s} type="button" onClick={() => enviar(s)} className="rounded-full border px-3 py-1 text-xs hover:bg-muted">
@@ -125,6 +129,19 @@ export function ChatAsistente({ esAdmin }: { esAdmin: boolean }) {
               </div>
               <div className={cn("max-w-[80%] rounded-lg px-3 py-2 text-sm", m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted")}>
                 {m.role === "assistant" ? <TextoFormateado texto={m.content} /> : m.content}
+                {m.adjuntos?.map((a) => (
+                  <div key={a.id} className="mt-2 flex flex-wrap items-center gap-2 rounded-md border bg-background p-2">
+                    <FileText className="size-4 text-primary" />
+                    <div className="mr-auto min-w-0 text-xs">
+                      <div className="font-medium">Cotización {a.numero}</div>
+                      <div className="truncate text-muted-foreground">{a.cliente} · {a.total}</div>
+                    </div>
+                    <Button size="sm" nativeButton={false} render={<a href={`/api/cotizaciones/${a.id}/pdf`} download />}>
+                      <Download className="size-3.5" /> PDF
+                    </Button>
+                    <Button size="sm" variant="outline" nativeButton={false} render={<Link href={`/cotizaciones/${a.id}`} />}>Abrir</Button>
+                  </div>
+                ))}
               </div>
             </div>
           ))}

@@ -13,12 +13,27 @@ export interface MensajeIA {
   content: string;
   /** Solo en mensajes "assistant" que piden ejecutar herramientas. */
   tool_calls?: LlamadaHerramienta[];
+  /** Solo en mensajes "assistant": partes tal como las devolvió el modelo (Gemini exige reenviarlas intactas, con sus firmas de razonamiento). */
+  partes_crudas?: unknown[];
   /** Solo en mensajes "tool": a qué llamada responde. */
   tool_call_id?: string;
+  /** Solo en mensajes "tool": nombre de la herramienta que respondió. */
+  nombre?: string;
+}
+
+/** Algo que el asistente produjo y que la interfaz debe mostrar como botón (hoy: una cotización lista con su PDF). */
+export interface AdjuntoChat {
+  tipo: "cotizacion";
+  id: string;
+  numero: string;
+  cliente: string;
+  total: string;
 }
 
 export interface ContextoHerramienta {
   sesion: Sesion;
+  /** Las herramientas que producen algo descargable lo agregan aquí; el router lo devuelve junto al texto. */
+  adjuntos: AdjuntoChat[];
 }
 
 export interface HerramientaIA {
@@ -34,6 +49,7 @@ export interface ResultadoGeneracion {
   toolCalls: LlamadaHerramienta[];
   tokensEntrada: number;
   tokensSalida: number;
+  partesCrudas?: unknown[];
 }
 
 export class ErrorProveedorIA extends Error {
