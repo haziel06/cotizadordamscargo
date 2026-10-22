@@ -6,8 +6,9 @@ import { leerConfig } from "@/lib/config";
 import { ventaLinea } from "@/lib/calculo/linea";
 import { formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
 import { ETIQUETA_ESTADO } from "@/lib/tarifas/estado";
-import { listarClientes, obtenerCliente } from "@/lib/clientes/consultas";
-import { buscarFletes, normalizar, textoTransito, textoVia } from "@/lib/cotizaciones/fletes";
+import { cotizacionesDeCliente, listarClientes, obtenerCliente } from "@/lib/clientes/consultas";
+import { clientesSimilares } from "@/lib/clientes/buscar";
+import { buscarFletes, normalizar, palabras, rutaCoincideOrigen, textoTransito, textoVia } from "@/lib/cotizaciones/fletes";
 import { textoUnidad } from "@/lib/etiquetas";
 import { coincideProveedor, extraerTarifarioDeDocumento } from "./tarifarioIA";
 import { proponerActualizacion } from "@/lib/tarifas/actualizacion";
@@ -211,7 +212,21 @@ const buscarFletesHerramienta: HerramientaIA = {
     const opciones = buscarFletes({ rutas: catalogo.rutas, tarifarios, origen: String(args.origen ?? ""), tipoCarga, recargos, limite: 8 });
     if (!opciones.length) {
       const disponibles = [...new Set(catalogo.rutas.filter((r) => tarifarios.some((t) => t.id === r.tarifario_id)).map((r) => r.origen))].slice(0, 20);
-      return { encontrados: 0, mensaje: "No hay fletes vigentes para ese origen en ese servicio.", origenes_disponibles: disponibles, instruccion: "Díselo al empleado y ofrécele estos orígenes o que revise el nombre del puerto." };
+      // ¿Existen tarifas para ese origen pero en un tarifario vencido o que aún no empieza? Es lo más útil de saber.
+      const fuera = catalogo.noDisponibles.filter((t) => (!t.servicio || t.servicio === servicio) && (t.estado === "vencido" || t.estado === "programado"));
+      const { data: ocultas } = fuera.length
+        ? await (await crearClienteServidor()).from("tarifas_ruta").select("origen, pais, via, tarifario_id").in("tarifario_id", fuera.map((t) => t.id)).is("archivado_at", null)
+        : { data: [] };
+      const pals = palabras(String(args.origen ?? ""));
+      const conTarifa = new Set((ocultas ?? []).filter((r) => rutaCoincideOrigen(r, pals)).map((r) => r.tarifario_id));
+      const noVigentes = fuera.filter((t) => conTarifa.has(t.id)).map((t) => ({ tarifario: t.nombre, estado: ETIQUETA_ESTADO[t.estado].texto, vigente_desde: t.vigencia_desde, vigente_hasta: t.vigencia_hasta }));
+      return {
+        encontrados: 0, mensaje: "No hay fletes vigentes hoy para ese origen en ese servicio.", origenes_disponibles: disponibles,
+        existen_pero_no_vigentes: noVigentes,
+        instruccion: noVigentes.length
+          ? "Dile que SÍ hay tarifas para ese origen pero en un tarifario vencido o que aún no empieza (menciona cuál y sus fechas) y que el administrador puede renovarlo en Base de tarifas."
+          : "Díselo al empleado y ofrécele estos orígenes o que revise el nombre del puerto.",
+      };
     }
     const detalle = (o: (typeof opciones)[number]) =>
       [o.tarifario.nombre, o.ruta.variante, textoVia(o.ruta.via), o.ruta.transito ? textoTransito(o.ruta.transito) : null].filter(Boolean).join(" · ");
@@ -241,18 +256,28 @@ const buscarClientes: HerramientaIA = {
   async ejecutar(args, { sesion }: ContextoHerramienta) {
     const q = String(args.q ?? "").trim().toLowerCase();
     if (q.length < 2) return { encontrados: 0 };
-    const clientes = (await listarClientes()).filter((c) => `${c.nombre} ${c.empresa ?? ""}`.toLowerCase().includes(q)).slice(0, 3);
+    // Tolera errores de escritura: "Cemaco" encuentra al cliente guardado como "camaco".
+    const clientes = clientesSimilares(q, await listarClientes()).slice(0, 3);
+    const usuario = sesion.esAdmin ? undefined : sesion.userId;
+    // Cotizaciones hechas con ese nombre aunque nunca se vincularon a un cliente guardado.
+    const porNombre = await listarCotizaciones({ q: String(args.q), usuario, limite: 5 });
+    if (!clientes.length) {
+      return { encontrados: 0, mensaje: "No hay ningún cliente guardado con ese nombre.", cotizaciones_con_ese_nombre: porNombre.map((x) => cotizacionParaVista(x, sesion.esAdmin)), instruccion: "Si hay cotizaciones con ese nombre, coméntalo. Para guardarlo como cliente el empleado puede usar «Guardar como cliente» al cotizar." };
+    }
     const resultados = await Promise.all(clientes.map(async (c) => {
       const detalle = await obtenerCliente(c.id);
-      const ultimas = await listarCotizaciones({ q: c.empresa || c.nombre, usuario: sesion.esAdmin ? undefined : sesion.userId, limite: 3 });
+      const vinculadas = await cotizacionesDeCliente(c.id, { usuario, limite: 5 });
+      const ultimas = await listarCotizaciones({ q: c.empresa || c.nombre, usuario, limite: 3 });
+      const vistas = new Map<string, Record<string, unknown>>([...ultimas.map((x) => [x.numero, cotizacionParaVista(x, sesion.esAdmin)] as const), ...porNombre.map((x) => [x.numero, cotizacionParaVista(x, sesion.esAdmin)] as const)]);
+      for (const v of vinculadas) if (!vistas.has(v.numero)) vistas.set(v.numero, { numero: v.numero, cliente: c.empresa || c.nombre, fecha: v.fecha, estado: v.estado, servicio: v.tipo_servicio, total: String(v.total_gtq) });
       return {
-        nombre: c.empresa || c.nombre, contacto: c.contacto_nombre, telefono: c.contacto_telefono,
+        nombre_registrado: c.empresa || c.nombre, contacto: c.contacto_nombre, telefono: c.contacto_telefono,
         // Solo qué servicios tienen precio especial: la fórmula o el margen detrás es del administrador.
         precios_especiales: (detalle?.tarifas ?? []).map((t) => (sesion.esAdmin ? `${t.concepto_nombre} (${t.tipo_margen} ${t.valor_margen})` : t.concepto_nombre)),
-        ultimas_cotizaciones: ultimas.map((x) => cotizacionParaVista(x, sesion.esAdmin)),
+        ultimas_cotizaciones: [...vistas.values()].slice(0, 5),
       };
     }));
-    return { encontrados: resultados.length, resultados };
+    return { encontrados: resultados.length, resultados, instruccion: "Usa el nombre_registrado; si el empleado lo escribió distinto, aclara cómo está guardado." };
   },
 };
 

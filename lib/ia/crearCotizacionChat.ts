@@ -4,6 +4,8 @@ import { sesionActual, type Sesion } from "@/lib/sesion";
 import { catalogoParaCotizar } from "@/lib/tarifas/consultas";
 import { tarifasEspecialesCliente } from "@/lib/clientes/consultas";
 import { guardarCotizacion } from "@/lib/cotizaciones/acciones";
+import { clientesSimilares, mismoNombre } from "@/lib/clientes/buscar";
+import { listarClientes } from "@/lib/clientes/consultas";
 import { cantidadPorUnidad, conceptoAplicaAServicio, conceptosCourier } from "@/lib/cotizaciones/armado";
 import { textoTransito, textoVia } from "@/lib/cotizaciones/fletes";
 import type { LineaEditable } from "@/lib/cotizaciones/esquema";
@@ -80,7 +82,7 @@ export async function crearCotizacionDesdeChat(datos: DatosCotizacionChat, sesio
   if (faltan.length || !cliente || !servicio) return { ok: false, faltan };
 
   const supabase = await crearClienteServidor();
-  const [{ recargos, defaults }, clienteRegistrado] = await Promise.all([leerConfig(), buscarClienteRegistrado(supabase, cliente)]);
+  const [{ recargos, defaults }, clienteRegistrado] = await Promise.all([leerConfig(), buscarClienteRegistrado(cliente)]);
   const catalogo = await catalogoParaCotizar({ ocultarCostos: !sesion.esAdmin, recargos });
   const tarifasCliente = await tarifasEspecialesCliente(clienteRegistrado?.id ?? null, { ocultarCostos: !sesion.esAdmin });
 
@@ -148,7 +150,8 @@ export async function crearCotizacionDesdeChat(datos: DatosCotizacionChat, sesio
     cabecera: {
       tipo_servicio: servicio, tipos_servicio: [servicio],
       cliente_id: clienteRegistrado?.id ?? null,
-      cliente_nombre: clienteRegistrado ? (clienteRegistrado.empresa || clienteRegistrado.nombre) : cliente,
+      // Si lo escrito es solo parecido (no igual) al guardado, se respeta lo que escribió el empleado: puede ser el guardado el que tenga el error.
+      cliente_nombre: clienteRegistrado && mismoNombre(cliente, clienteRegistrado.empresa || clienteRegistrado.nombre) ? (clienteRegistrado.empresa || clienteRegistrado.nombre) : cliente,
       contacto: texto(datos.contacto), cliente_telefono: texto(datos.telefono), consignatario: texto(datos.consignatario),
       fuera_perimetro: Boolean(datos.fuera_perimetro), segmento_courier: segmento,
       valor_mercaderia: valorMerc, fecha: hoyIso(), dias_vigencia: defaults.dias_vigencia,
@@ -184,10 +187,9 @@ export async function crearCotizacionDesdeChat(datos: DatosCotizacionChat, sesio
   };
 }
 
-async function buscarClienteRegistrado(supabase: Awaited<ReturnType<typeof crearClienteServidor>>, nombre: string) {
-  const patron = nombre.replace(/[^\p{L}\p{N} .&-]/gu, "").trim();
-  if (patron.length < 3) return null;
-  const { data } = await supabase.from("clientes").select("id, nombre, empresa").eq("activo", true).or(`nombre.ilike.%${patron}%,empresa.ilike.%${patron}%`).limit(2);
+async function buscarClienteRegistrado(nombre: string) {
+  if (nombre.trim().length < 3) return null;
+  const similares = clientesSimilares(nombre, (await listarClientes()).filter((c) => c.activo));
   // Solo si es inequívoco: con dos coincidencias es preferible no atar la cotización al cliente equivocado.
-  return data?.length === 1 ? data[0] : null;
+  return similares.length === 1 ? similares[0] : null;
 }

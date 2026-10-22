@@ -12,6 +12,7 @@ import type { Cliente } from "@/lib/supabase/tipos";
 import type { GanadorPeso } from "@/lib/calculo/peso";
 import { guardarCliente } from "@/lib/clientes/acciones";
 import type { CotizacionDeCliente } from "@/lib/clientes/consultas";
+import { clientesSimilares } from "@/lib/clientes/buscar";
 import { formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
 import { cn } from "@/lib/utils";
 
@@ -68,7 +69,7 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, pu
   const buscarCliente = (texto: string) => {
     onChange({ cliente_nombre: texto, cliente_id: null });
     const q = texto.trim().toLowerCase();
-    setSugerencias(q.length >= 2 ? clientes.filter((k) => `${k.nombre} ${k.empresa ?? ""} ${k.contacto_nombre ?? ""}`.toLowerCase().includes(q)).slice(0, 6) : []);
+    setSugerencias(q.length >= 2 ? [...new Map([...clientesSimilares(texto, clientes), ...clientes.filter((k) => `${k.contacto_nombre ?? ""}`.toLowerCase().includes(q))].map((k) => [k.id, k])).values()].slice(0, 6) : []);
   };
   const elegirCliente = (k: Cliente) => {
     onChange({
