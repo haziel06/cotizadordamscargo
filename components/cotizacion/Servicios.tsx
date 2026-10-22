@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Lock, Package, Plus, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Lock, Package, Plus, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Casilla, Entrada, Selector } from "@/components/Campos";
@@ -83,7 +83,9 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>(() => Object.fromEntries(servicio.secciones.map((s, i) => [s, i < 2])));
   const [busquedaRuta, setBusquedaRuta] = useState<Record<string, string>>({});
   const [verTodas, setVerTodas] = useState(false);
+  const [filtroProv, setFiltroProv] = useState<Record<string, string>>({});
 
+  const vencidos = useMemo(() => catalogo.noDisponibles.filter((t) => t.estado === "vencido"), [catalogo.noDisponibles]);
   const provNombre = useMemo(() => new Map(catalogo.proveedores.map((p) => [p.id, p.nombre])), [catalogo.proveedores]);
   const tarifarioPorId = useMemo(() => new Map(catalogo.tarifarios.map((t) => [t.id, t])), [catalogo.tarifarios]);
 
@@ -124,7 +126,7 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
     onChange((ls) => [
       ...ls,
       {
-        _clave: clave(), concepto_id: null, ruta_id: r.id, nombre: `Flete ${t?.seccion === "flete_aereo" ? "aéreo" : "marítimo"} ${r.origen} → ${r.destino}`, categoria: "internacional", moneda: t?.moneda ?? "USD",
+        _clave: clave(), concepto_id: null, ruta_id: r.id, nombre: `Flete ${t?.seccion === "flete_aereo" ? "aéreo" : "marítimo"} ${r.origen} → ${r.destino}${r.variante ? ` (${r.variante})` : ""}`, categoria: "internacional", moneda: t?.moneda ?? "USD",
         cantidad: cantidadPara(r.unidad), costo_unitario: Number(r.costo ?? 0), tipo_margen: r.tipo_margen, valor_margen: Number(r.valor_margen),
         lleva_iva: true, aplica_recargos: r.aplica_recargos, cuenta_ajena: false, nota: [textoVia(r.via), r.transito ? `Tránsito ${r.transito} días` : null].filter(Boolean).join(" · ") || null,
         nota_visible: true, proveedor_nombre: prov ?? null, ruta: `${r.origen} → ${r.destino}`, unidad: r.unidad, pendiente: r.costo == null, seccion: t?.seccion ?? "flete_maritimo",
@@ -226,6 +228,15 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
         )}
       </CardHeader>
       <CardContent className="space-y-3">
+        {vencidos.length > 0 && (
+          <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span>
+              No se pueden usar por estar vencidos: <strong>{vencidos.slice(0, 4).map((t) => t.nombre).join(", ")}{vencidos.length > 4 ? ` y ${vencidos.length - 4} más` : ""}</strong>.
+              {esAdmin ? " Renueva la fecha o sube el nuevo en Base de tarifas." : " Avisa al administrador para que los renueve."}
+            </span>
+          </div>
+        )}
         {secciones.map((sec) => {
           const info = infoSeccion(sec);
           const conceptos = conceptosAplicables.filter((c) => c.seccion === sec);
@@ -239,6 +250,15 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
             const k = c.tarifario_id ?? "sin";
             grupos.set(k, [...(grupos.get(k) ?? []), c]);
           }
+          // Cotizar "con" un proveedor: si la sección tiene tarifas de varias empresas, se puede ver solo una.
+          const claveProv = (t?: { proveedor_id: string | null }) => t?.proveedor_id ?? "propio";
+          const nombreProv = (t?: { proveedor_id: string | null }) => (t?.proveedor_id ? (provNombre.get(t.proveedor_id) ?? "Proveedor") : "Propio · Dams Cargo");
+          const proveedoresSec = new Map<string, string>();
+          for (const t of tarifariosRuta) proveedoresSec.set(claveProv(t), nombreProv(t));
+          for (const tid of grupos.keys()) { const t = tarifarioPorId.get(tid); proveedoresSec.set(claveProv(t), nombreProv(t)); }
+          const elegido = proveedoresSec.has(filtroProv[sec] ?? "") ? filtroProv[sec] : "";
+          const rutasVisibles = tarifariosRuta.filter((t) => !elegido || claveProv(t) === elegido);
+          const gruposVisibles = [...grupos.entries()].filter(([tid]) => !elegido || claveProv(tarifarioPorId.get(tid)) === elegido);
           return (
             <section key={sec} className={cn("rounded-lg border", esAjena && "border-dashed")}>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left" onClick={() => setAbiertas((a) => ({ ...a, [sec]: !abierta }))}>
@@ -250,8 +270,19 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
 
               {abierta && (
                 <div className="space-y-3 border-t px-3 py-3">
+                  {proveedoresSec.size > 1 && (
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="text-muted-foreground">Cotizar con:</span>
+                      {[["", "Todos"], ...proveedoresSec.entries()].map(([k, nombre]) => (
+                        <button key={k || "todos"} type="button" onClick={() => setFiltroProv((f) => ({ ...f, [sec]: k }))}
+                          className={cn("rounded-full border px-2.5 py-0.5 font-medium hover:bg-muted", elegido === k && "border-primary bg-primary text-primary-foreground hover:bg-primary")}>
+                          {nombre}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {/* Rutas (fletes por origen) */}
-                  {tarifariosRuta.map((t) => {
+                  {rutasVisibles.map((t) => {
                     const rutas = catalogo.rutas.filter((r) => r.tarifario_id === t.id);
                     const q = (busquedaRuta[t.id] ?? "").toLowerCase();
                     const filtradas = q ? rutas.filter((r) => `${r.pais ?? ""} ${r.origen} ${r.via ?? ""}`.toLowerCase().includes(q)).slice(0, 12) : [];
@@ -260,8 +291,8 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                         <div className="flex flex-wrap items-center gap-2 text-sm">
                           <span className="font-medium">{t.proveedor_id ? provNombre.get(t.proveedor_id) : "Propio"}</span>
                           <span className="text-xs text-muted-foreground">{t.nombre}</span>
-                          {t.vencido && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[11px] text-red-900">Vencido {t.vigencia_hasta ? formatoFecha(t.vigencia_hasta) : ""}</span>}
-                          {!t.vencido && t.vigencia_hasta && <span className="rounded bg-green-100 px-1.5 py-0.5 text-[11px] text-green-900">Vigente al {formatoFecha(t.vigencia_hasta)}</span>}
+                          {t.estado === "por_vencer" && t.vigencia_hasta && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-900">Vence el {formatoFecha(t.vigencia_hasta)}</span>}
+                          {t.estado === "en_uso" && t.vigencia_hasta && <span className="rounded bg-green-100 px-1.5 py-0.5 text-[11px] text-green-900">Vigente al {formatoFecha(t.vigencia_hasta)}</span>}
                           <Entrada placeholder={`Buscar origen entre ${rutas.length} rutas… (ej. Xiamen)`} value={busquedaRuta[t.id] ?? ""}
                             onChange={(e) => setBusquedaRuta((b) => ({ ...b, [t.id]: e.target.value }))} className="ml-auto w-72" autoComplete="off" />
                         </div>
@@ -271,6 +302,7 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                               <li key={r.id} className="flex items-center gap-3 px-2 py-1 text-sm">
                                 <span className="w-24 text-muted-foreground">{r.pais}</span>
                                 <span className="font-medium">{r.origen}</span>
+                                {r.variante && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">{r.variante}</span>}
                                 <span className="text-xs text-muted-foreground">{r.via && r.via !== "Direct" ? `vía ${r.via}` : "directo"} · {r.transito ?? "—"} días</span>
                                 <span className="num ml-auto">
                                   {r.costo == null && esAdmin ? <em className="text-amber-700">falta monto</em> : `${formatoMoneda(Number(esAdmin ? r.costo : r.valor_margen), t.moneda)} / ${textoUnidad(r.unidad).replace("por ", "")}`}
@@ -286,14 +318,14 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                   })}
 
                   {/* Conceptos por proveedor/tarifario */}
-                  {[...grupos.entries()].map(([tid, cs]) => {
+                  {gruposVisibles.map(([tid, cs]) => {
                     const t = tarifarioPorId.get(tid);
                     return (
                       <div key={tid}>
                         <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
                           <span className="font-medium text-foreground">{t?.proveedor_id ? provNombre.get(t.proveedor_id) : "Propio · Dams Cargo"}</span>
                           {t && <span>· {t.nombre}</span>}
-                          {t?.vencido && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[11px] text-red-900">Vencido</span>}
+                          {t?.estado === "por_vencer" && t.vigencia_hasta && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-900">Vence el {formatoFecha(t.vigencia_hasta)}</span>}
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                           {cs.map((c) => {

@@ -1,31 +1,25 @@
 "use client";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, FileText, Pencil, Trash2, Upload } from "lucide-react";
+import { FileText, Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { SECCIONES, infoServicio } from "@/lib/etiquetas";
 import { formatoFecha } from "@/lib/calculo/formato";
 import type { Proveedor, Tarifario } from "@/lib/supabase/tipos";
-import type { EstadoVigencia } from "@/lib/tarifas/consultas";
+import { ETIQUETA_ESTADO, textoVencimiento, type EstadoTarifario } from "@/lib/tarifas/estado";
 import { archivarTarifario, eliminarTarifario, subirDocumentoTarifario } from "@/lib/tarifas/acciones";
 import { DialogoTarifario } from "./DialogoTarifario";
 import { cn } from "@/lib/utils";
 
-const VIGENCIA: Record<EstadoVigencia, { texto: string; clase: string }> = {
-  vigente: { texto: "Vigente", clase: "bg-green-100 text-green-900" },
-  por_vencer: { texto: "Por vencer", clase: "bg-amber-100 text-amber-900" },
-  vencido: { texto: "Vencido", clase: "bg-red-100 text-red-900" },
-  sin_fecha: { texto: "Sin vigencia definida", clase: "bg-muted text-muted-foreground" },
-};
-
-export function CabeceraTarifario({ tarifario: t, proveedores, vigencia }: { tarifario: Tarifario; proveedores: Proveedor[]; vigencia: EstadoVigencia }) {
+export function CabeceraTarifario({ tarifario: t, proveedores, estado }: { tarifario: Tarifario; proveedores: Proveedor[]; estado: EstadoTarifario }) {
   const router = useRouter();
   const [pendiente, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const archivo = useRef<HTMLInputElement>(null);
   const prov = proveedores.find((p) => p.id === t.proveedor_id);
   const sec = SECCIONES.find((s) => s.valor === t.seccion);
-  const v = VIGENCIA[vigencia];
+  const v = ETIQUETA_ESTADO[estado];
 
   const subir = () => {
     const f = archivo.current?.files?.[0];
@@ -40,14 +34,13 @@ export function CabeceraTarifario({ tarifario: t, proveedores, vigencia }: { tar
   };
 
   return (
-    <div className={cn("rounded-lg border bg-card p-5", t.archivado_at && "opacity-70")}>
+    <div className={cn("rounded-lg border bg-card p-5", (estado === "desactivado" || estado === "vencido") && "bg-muted/30")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold text-primary">{t.nombre}</h1>
-            <span className={cn("rounded px-2 py-0.5 text-[11px] font-medium", t.archivado_at ? "bg-muted text-muted-foreground" : v.clase)}>
-              {t.archivado_at ? "Archivado" : v.texto}
-            </span>
+            <span className={cn("rounded px-2 py-0.5 text-[11px] font-medium", v.clase)}>{v.texto}</span>
+            <span className="text-xs text-muted-foreground">{textoVencimiento(t)}</span>
           </div>
           <div className="mt-1 text-sm text-muted-foreground">
             {prov?.nombre ?? "Propio · Dams Cargo"} · {sec?.texto ?? t.seccion}
@@ -65,9 +58,11 @@ export function CabeceraTarifario({ tarifario: t, proveedores, vigencia }: { tar
           <DialogoTarifario proveedores={proveedores} tarifario={t}>
             <Button variant="outline" size="sm"><Pencil /> Editar</Button>
           </DialogoTarifario>
-          <Button variant="outline" size="sm" disabled={pendiente} onClick={() => startTransition(async () => { await archivarTarifario(t.id, !t.archivado_at); router.refresh(); })}>
-            {t.archivado_at ? <><ArchiveRestore /> Restaurar</> : <><Archive /> Archivar</>}
-          </Button>
+          <label className="flex items-center gap-2 rounded-md border px-2.5 py-1 text-sm">
+            Usar al cotizar
+            <Switch checked={!t.archivado_at} disabled={pendiente} aria-label="Usar al cotizar"
+              onCheckedChange={(prendido) => startTransition(async () => { await archivarTarifario(t.id, !prendido); router.refresh(); })} />
+          </label>
           <Button variant="ghost" size="sm" className="text-destructive" disabled={pendiente}
             onClick={() => {
               if (!confirm(`¿Borrar DEFINITIVAMENTE "${t.nombre}" y todas sus tarifas? No se puede deshacer.`)) return;

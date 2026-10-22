@@ -52,6 +52,20 @@ export async function archivarTarifario(id: string, archivar: boolean): Promise<
   return { ok: true, id };
 }
 
+const fechaOpcional = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").nullable();
+
+/** Cambia solo las fechas de vigencia (renovar un tarifario sin abrirlo). Vacío = sin límite. */
+export async function establecerVigenciaTarifario(id: string, desde: string | null, hasta: string | null): Promise<Resultado> {
+  const parsed = z.object({ desde: fechaOpcional, hasta: fechaOpcional }).safeParse({ desde: desde || null, hasta: hasta || null });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Fecha inválida" };
+  if (parsed.data.desde && parsed.data.hasta && parsed.data.desde > parsed.data.hasta) return { ok: false, error: "«Desde» no puede ser después de «hasta»." };
+  const supabase = await crearClienteServidor();
+  const { error } = await supabase.from("tarifarios").update({ vigencia_desde: parsed.data.desde, vigencia_hasta: parsed.data.hasta }).eq("id", id);
+  if (error) return { ok: false, error: "No se pudo cambiar la vigencia." };
+  revalidar(id);
+  return { ok: true, id };
+}
+
 /** Borrado definitivo: desaparece del histórico. Las líneas ya cotizadas conservan su copia. */
 export async function eliminarTarifario(id: string): Promise<Resultado> {
   const supabase = await crearClienteServidor();
@@ -146,6 +160,7 @@ const esquemaRuta = z.object({
   origen: z.string().trim().min(1, "El origen es obligatorio"),
   destino: z.string().trim().min(1).default("Guatemala"),
   via: texto,
+  variante: texto.default(null),
   costo: num,
   unidad: z.enum(["envio", "contenedor", "kg", "cbm", "libra", "pie_cubico", "guia", "factura"]),
   minimo: num,

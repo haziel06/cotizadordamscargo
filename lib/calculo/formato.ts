@@ -34,10 +34,11 @@ export function fechaVencimiento(fechaIso: string, dias: number): string {
   return new Date(t).toISOString().slice(0, 10);
 }
 
-/** Hoy en ISO `AAAA-MM-DD` según el reloj local. */
+/**
+ * Hoy en ISO `AAAA-MM-DD` en hora de Guatemala (UTC-6, sin horario de verano). Se fija el huso porque el
+ * servidor corre en UTC: sin esto, después de las 6 pm un tarifario "vence hoy" ya contaba como vencido
+ * y las cotizaciones nuevas salían con la fecha de mañana.
+ */
 export function hoyIso(): string {
-  const h = new Date();
-  const mm = String(h.getMonth() + 1).padStart(2, "0");
-  const dd = String(h.getDate()).padStart(2, "0");
-  return `${h.getFullYear()}-${mm}-${dd}`;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guatemala", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }

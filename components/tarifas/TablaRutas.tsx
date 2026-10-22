@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 type F = Fila<DatosRuta & { archivado_at?: string | null }>;
 
 const aFila = (r: TarifaRuta): F => ({
-  _clave: r.id, id: r.id, tarifario_id: r.tarifario_id, pais: r.pais, origen: r.origen, destino: r.destino, via: r.via,
+  _clave: r.id, id: r.id, tarifario_id: r.tarifario_id, pais: r.pais, origen: r.origen, destino: r.destino, via: r.via, variante: r.variante,
   costo: r.costo == null ? null : Number(r.costo), unidad: r.unidad, minimo: r.minimo == null ? null : Number(r.minimo),
   transito: r.transito, tipo_margen: r.tipo_margen, valor_margen: Number(r.valor_margen), aplica_recargos: r.aplica_recargos,
   notas: r.notas, archivado_at: r.archivado_at,
@@ -37,7 +37,7 @@ export function TablaRutas({ tarifario, rutas, recargos }: { tarifario: Tarifari
   }, [filas, q, verArchivadas]);
 
   const nueva = () =>
-    agregar({ _clave: claveNueva(), tarifario_id: tarifario.id, pais: "", origen: "", destino: tarifario.destino ?? "Guatemala", via: "", costo: null, unidad: "cbm", minimo: null, transito: "", tipo_margen: "porcentaje", valor_margen: 20, aplica_recargos: true, notas: "" });
+    agregar({ _clave: claveNueva(), tarifario_id: tarifario.id, pais: "", origen: "", destino: tarifario.destino ?? "Guatemala", via: "", variante: "", costo: null, unidad: "cbm", minimo: null, transito: "", tipo_margen: "porcentaje", valor_margen: 20, aplica_recargos: true, notas: "" });
 
   const archivar = (f: F) => startTransition(async () => { if (f.id) { await archivarRuta(f.id, !f.archivado_at); actualizar(f._clave, { archivado_at: f.archivado_at ? null : new Date().toISOString() }); } });
   const borrar = (f: F) => {
@@ -64,6 +64,7 @@ export function TablaRutas({ tarifario, rutas, recargos }: { tarifario: Tarifari
               <th className="px-2 py-2 font-medium">País</th>
               <th className="px-2 py-2 font-medium">Origen</th>
               <th className="px-2 py-2 font-medium">Vía</th>
+              <th className="px-2 py-2 font-medium" title="Qué precio es cuando el tramo tiene varios: 20GP, 40HQ, escala de peso…">Variante</th>
               <th className="px-2 py-2 text-right font-medium">Costo</th>
               <th className="px-2 py-2 font-medium">Unidad</th>
               <th className="px-2 py-2 text-right font-medium">Mínimo</th>
@@ -77,7 +78,7 @@ export function TablaRutas({ tarifario, rutas, recargos }: { tarifario: Tarifari
           </thead>
           <tbody className="divide-y">
             {visibles.length === 0 && (
-              <tr><td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">Sin rutas. Agrega la primera o adjunta el tarifario y cárgalas.</td></tr>
+              <tr><td colSpan={13} className="px-3 py-8 text-center text-muted-foreground">Sin rutas. Agrega la primera o adjunta el tarifario y cárgalas.</td></tr>
             )}
             {visibles.map((f) => {
               const v = venta(f);
@@ -86,6 +87,7 @@ export function TablaRutas({ tarifario, rutas, recargos }: { tarifario: Tarifari
                   <td className="px-2 py-1"><Entrada value={f.pais ?? ""} onChange={(e) => actualizar(f._clave, { pais: e.target.value })} onBlur={() => guardar(f._clave)} className="w-24" /></td>
                   <td className="px-2 py-1"><Entrada value={f.origen} autoFocus={!f.id} onChange={(e) => actualizar(f._clave, { origen: e.target.value })} onBlur={() => guardar(f._clave)} className="min-w-36" /></td>
                   <td className="px-2 py-1"><Entrada value={f.via ?? ""} onChange={(e) => actualizar(f._clave, { via: e.target.value })} onBlur={() => guardar(f._clave)} className="w-32" /></td>
+                  <td className="px-2 py-1"><Entrada value={f.variante ?? ""} placeholder="40HQ" onChange={(e) => actualizar(f._clave, { variante: e.target.value })} onBlur={() => guardar(f._clave)} className="w-24" /></td>
                   <td className="px-2 py-1"><Entrada type="number" step="0.01" min={0} value={f.costo ?? ""} placeholder="falta" onChange={(e) => actualizar(f._clave, { costo: e.target.value === "" ? null : Number(e.target.value) })} onBlur={() => guardar(f._clave)} className="w-24" /></td>
                   <td className="px-2 py-1">
                     <Selector value={f.unidad} onChange={(e) => guardar(f._clave, { unidad: e.target.value as F["unidad"] })} className="w-28">

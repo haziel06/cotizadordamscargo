@@ -5,6 +5,7 @@ import { crearClienteServidor } from "@/lib/supabase/server";
 import { leerConfig } from "@/lib/config";
 import { ventaLinea } from "@/lib/calculo/linea";
 import { formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
+import { ETIQUETA_ESTADO } from "@/lib/tarifas/estado";
 import { crearCotizacionDesdeChat, type DatosCotizacionChat } from "./crearCotizacionChat";
 import type { ContextoHerramienta, HerramientaIA } from "./tipos";
 
@@ -142,7 +143,7 @@ const buscarTarifarios: HerramientaIA = {
     const filtrados = texto ? tarifarios.filter((t) => t.nombre.toLowerCase().includes(texto) || t.seccion.toLowerCase().includes(texto)) : tarifarios;
     return {
       resultados: filtrados.slice(0, 15).map((t) => ({
-        nombre: t.nombre, proveedor: t.proveedor_nombre, seccion: t.seccion, vigencia: t.vigencia,
+        nombre: t.nombre, proveedor: t.proveedor_nombre, seccion: t.seccion, estado: ETIQUETA_ESTADO[t.estado].texto, vigente_hasta: t.vigencia_hasta,
       })),
     };
   },

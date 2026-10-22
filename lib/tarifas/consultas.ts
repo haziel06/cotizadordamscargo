@@ -3,23 +3,13 @@ import { ventaLinea } from "@/lib/calculo/linea";
 import { SIN_RECARGOS, type Categoria, type Moneda, type Recargos, type TipoMargen } from "@/lib/calculo/tipos";
 import { hoyIso } from "@/lib/calculo/formato";
 import type { Concepto, Proveedor, Tarifario, TarifaRuta } from "@/lib/supabase/tipos";
-
-export type EstadoVigencia = "vigente" | "por_vencer" | "vencido" | "sin_fecha";
-
-/** Vigente / por vencer (≤ 5 días) / vencido, según fechas del tarifario. */
-export function estadoVigencia(t: Pick<Tarifario, "vigencia_desde" | "vigencia_hasta">): EstadoVigencia {
-  const hoy = hoyIso();
-  if (!t.vigencia_hasta) return "sin_fecha";
-  if (t.vigencia_hasta < hoy) return "vencido";
-  const dias = Math.round((Date.parse(t.vigencia_hasta) - Date.parse(hoy)) / 86400000);
-  return dias <= 5 ? "por_vencer" : "vigente";
-}
+import { estadoTarifario, tarifarioUsable, type EstadoTarifario } from "./estado";
 
 export interface TarifarioResumen extends Tarifario {
   proveedor_nombre: string | null;
   n_conceptos: number;
   n_rutas: number;
-  vigencia: EstadoVigencia;
+  estado: EstadoTarifario;
 }
 
 export async function listarTarifarios(incluirArchivados = false): Promise<TarifarioResumen[]> {
@@ -45,7 +35,7 @@ export async function listarTarifarios(incluirArchivados = false): Promise<Tarif
       proveedor_nombre: t.proveedor_id ? (nombreProv.get(t.proveedor_id) ?? null) : null,
       n_conceptos: nc.get(t.id) ?? 0,
       n_rutas: nr.get(t.id) ?? 0,
-      vigencia: estadoVigencia(t),
+      estado: estadoTarifario(t),
     }));
 }
 
@@ -67,29 +57,39 @@ export async function obtenerTarifario(id: string): Promise<{
 }
 
 /**
- * Todo lo activo y vigente que el editor de cotización necesita, en una sola llamada.
+ * Todo lo que el editor de cotización puede usar HOY, en una sola llamada. Un tarifario vencido
+ * (su fecha ya pasó), todavía no vigente o desactivado a mano NO entra: sus conceptos y rutas
+ * desaparecen del catálogo, y los vencidos/programados se listan en `noDisponibles` para avisarlo.
  * Para un usuario normal los costos y márgenes NUNCA salen del servidor: cada concepto y ruta
  * llega como "precio fijo" igual a la venta unitaria (costo 0, sin recargos).
  */
 export async function catalogoParaCotizar(opciones: { ocultarCostos?: boolean; recargos?: Recargos } = {}) {
   const supabase = await crearClienteServidor();
-  const hoy = hoyIso();
   const [{ data: tarifarios }, { data: conceptos }, { data: rutas }, { data: proveedores }] = await Promise.all([
     supabase.from("tarifarios").select("*").is("archivado_at", null).order("nombre"),
     supabase.from("conceptos").select("*").is("archivado_at", null).order("seccion").order("orden").order("nombre"),
     supabase.from("tarifas_ruta").select("*").is("archivado_at", null).order("pais").order("origen"),
     supabase.from("proveedores").select("id, nombre").eq("activo", true),
   ]);
-  // Los tarifarios vencidos siguen visibles pero marcados: la oficina decide si los usa.
-  const conVigencia = (tarifarios ?? []).map((t) => ({ ...t, vencido: Boolean(t.vigencia_hasta && t.vigencia_hasta < hoy) }));
+  const hoy = hoyIso();
+  const conEstado = (tarifarios ?? []).map((t) => ({ ...t, estado: estadoTarifario(t, hoy) }));
+  const usables = conEstado.filter((t) => tarifarioUsable(t, hoy));
+  const noDisponibles = conEstado
+    .filter((t) => !tarifarioUsable(t, hoy))
+    .map((t) => ({ id: t.id, nombre: t.nombre, estado: t.estado, vigencia_hasta: t.vigencia_hasta, vigencia_desde: t.vigencia_desde }));
+  const ocultos = new Set(noDisponibles.map((t) => t.id));
+  // Los conceptos sin tarifario (propios de Dams Cargo) siempre se pueden usar.
+  const conceptosVigentes = (conceptos ?? []).filter((c) => !c.tarifario_id || !ocultos.has(c.tarifario_id));
+  const rutasVigentes = (rutas ?? []).filter((x) => !ocultos.has(x.tarifario_id));
   if (!opciones.ocultarCostos) {
-    return { tarifarios: conVigencia, conceptos: conceptos ?? [], rutas: rutas ?? [], proveedores: proveedores ?? [] };
+    return { tarifarios: usables, noDisponibles, conceptos: conceptosVigentes, rutas: rutasVigentes, proveedores: proveedores ?? [] };
   }
   const r = opciones.recargos ?? SIN_RECARGOS;
   return {
-    tarifarios: conVigencia,
-    conceptos: (conceptos ?? []).map((c) => soloVenta(c, Number(c.costo), c.categoria, c.moneda, r)),
-    rutas: (rutas ?? []).map((x) => soloVenta(x, Number(x.costo ?? 0), "internacional", "USD", r)),
+    tarifarios: usables,
+    noDisponibles,
+    conceptos: conceptosVigentes.map((c) => soloVenta(c, Number(c.costo), c.categoria, c.moneda, r)),
+    rutas: rutasVigentes.map((x) => soloVenta(x, Number(x.costo ?? 0), "internacional", "USD", r)),
     proveedores: proveedores ?? [],
   };
 }

@@ -9,6 +9,7 @@ import { esquemaGuardar } from "./esquema";
 import { leerConfig } from "@/lib/config";
 import { sesionActual } from "@/lib/sesion";
 import { tarifasEspecialesCliente } from "@/lib/clientes/consultas";
+import { tarifarioUsable } from "@/lib/tarifas/estado";
 import type { Database } from "@/lib/supabase/tipos";
 import type { z as Z } from "zod";
 import type { esquemaLinea } from "./esquema";
@@ -30,12 +31,23 @@ async function reconstruirLineasVendedor(supabase: Awaited<ReturnType<typeof cre
     // Siempre en términos de venta: esta función solo corre para usuario normal, nunca se le entrega costo/fórmula reales.
     tarifasEspecialesCliente(clienteId, { ocultarCostos: true }),
   ]);
+  // Una línea NUEVA no puede venir de un tarifario vencido o desactivado (el editor ya no los ofrece;
+  // esto cubre una pantalla abierta desde antes del vencimiento). Las líneas que la cotización ya tenía se respetan.
+  const tarifarioIds = [...new Set([...(conceptos ?? []).map((x) => x.tarifario_id), ...(rutas ?? []).map((x) => x.tarifario_id)].filter((x): x is string => !!x))];
+  const { data: tarifarios } = tarifarioIds.length
+    ? await supabase.from("tarifarios").select("id, nombre, vigencia_desde, vigencia_hasta, archivado_at").in("id", tarifarioIds)
+    : { data: [] };
+  const noUsables = new Map((tarifarios ?? []).filter((t) => !tarifarioUsable(t)).map((t) => [t.id, t.nombre]));
   const salida: LineaEntrada[] = [];
   for (const l of lineas) {
     const previa = (previas ?? []).find((p) => (l.concepto_id && p.concepto_id === l.concepto_id) || (l.ruta_id && p.ruta_id === l.ruta_id));
     const c = l.concepto_id ? (conceptos ?? []).find((x) => x.id === l.concepto_id) : undefined;
     const r = l.ruta_id ? (rutas ?? []).find((x) => x.id === l.ruta_id) : undefined;
     if (!previa && !c && !r) return `"${l.nombre || "Línea"}" no viene de la base de tarifas. Solo un administrador puede agregar líneas manuales.`;
+    const tarifarioDeLinea = c?.tarifario_id ?? r?.tarifario_id;
+    if (!previa && tarifarioDeLinea && noUsables.has(tarifarioDeLinea)) {
+      return `"${l.nombre}" es del tarifario "${noUsables.get(tarifarioDeLinea)}", que está vencido o desactivado. Quita esa línea o pide que lo renueven.`;
+    }
     const base = previa
       ? { costo_unitario: Number(previa.costo_unitario), tipo_margen: previa.tipo_margen, valor_margen: Number(previa.valor_margen), aplica_recargos: previa.aplica_recargos, cuenta_ajena: previa.cuenta_ajena, lleva_iva: previa.lleva_iva }
       : c

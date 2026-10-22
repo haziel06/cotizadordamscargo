@@ -125,6 +125,8 @@ export async function extraerJsonDeDocumento(opciones: {
   archivoBase64?: string;
   mimeType?: string;
   esquemaJson: Record<string, unknown>;
+  /** Tope de tokens de salida; las hojas de tarifas largas necesitan bastante más que un formulario. */
+  maxTokens?: number;
 }): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   const modelo = process.env.GEMINI_MODEL || "gemini-3.6-flash";
@@ -138,7 +140,7 @@ export async function extraerJsonDeDocumento(opciones: {
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: opciones.esquemaJson,
-      maxOutputTokens: 8192,
+      maxOutputTokens: opciones.maxTokens ?? 8192,
       // Sin esto, el modelo gasta su presupuesto de salida "pensando" antes de escribir el JSON:
       // con documentos largos eso truncaba la lista a una sola fila, y a veces ni terminaba (503).
       thinkingConfig: { thinkingBudget: 0 },
@@ -147,7 +149,7 @@ export async function extraerJsonDeDocumento(opciones: {
 
   const intentar = async (): Promise<Response> => {
     const control = new AbortController();
-    const corte = setTimeout(() => control.abort(), 60_000);
+    const corte = setTimeout(() => control.abort(), 55_000);
     try {
       return await fetch(`${URL_BASE}/${modelo}:generateContent?key=${apiKey}`, {
         method: "POST",
@@ -177,6 +179,10 @@ export async function extraerJsonDeDocumento(opciones: {
     }
     const datos = await resp.json();
     const texto = datos?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
+    // Reintentar no sirve: el documento simplemente no cabe en una sola lectura.
+    if (datos?.candidates?.[0]?.finishReason === "MAX_TOKENS") {
+      throw new ErrorProveedorIA(`${NOMBRE}: el documento es tan largo que la lectura se cortó.`, "error_proveedor", NOMBRE);
+    }
     if (!texto) {
       ultimoError = new ErrorProveedorIA(`${NOMBRE}: no devolvió contenido (posible bloqueo de seguridad o documento demasiado largo).`, "error_proveedor", NOMBRE);
       continue;

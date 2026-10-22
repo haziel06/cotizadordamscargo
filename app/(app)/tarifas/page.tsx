@@ -3,13 +3,14 @@ import { crearClienteServidor } from "@/lib/supabase/server";
 import { listarTarifarios } from "@/lib/tarifas/consultas";
 import { ListaTarifarios } from "@/components/tarifas/ListaTarifarios";
 
-export default async function PaginaTarifas(props: PageProps<"/tarifas">) {
+// Leer un tarifario con IA puede tardar más que el límite por defecto del servidor.
+export const maxDuration = 60;
+
+export default async function PaginaTarifas() {
   await adminRequerido();
-  const sp = await props.searchParams;
-  const archivados = sp.archivados === "1";
   const supabase = await crearClienteServidor();
   const [tarifarios, { data: proveedores }] = await Promise.all([
-    listarTarifarios(archivados),
+    listarTarifarios(true),
     supabase.from("proveedores").select("*").order("nombre"),
   ]);
 
@@ -18,10 +19,10 @@ export default async function PaginaTarifas(props: PageProps<"/tarifas">) {
       <div>
         <h1 className="text-2xl font-semibold text-primary">Base de tarifas</h1>
         <p className="text-sm text-muted-foreground">
-          Un tarifario por proveedor y servicio, con su vigencia y el documento original. Editar aquí no cambia cotizaciones ya guardadas.
+          Un tarifario por proveedor y servicio, con su vigencia y el documento original. Cuando llega su fecha de vencimiento se apaga solo y deja de aparecer al cotizar. Editar aquí no cambia cotizaciones ya guardadas.
         </p>
       </div>
-      <ListaTarifarios key={`${archivados}-${tarifarios.length}`} tarifarios={tarifarios} proveedores={proveedores ?? []} mostrandoArchivados={archivados} />
+      <ListaTarifarios key={tarifarios.map((t) => `${t.id}${t.estado}${t.vigencia_hasta}`).join("|")} tarifarios={tarifarios} proveedores={proveedores ?? []} />
     </div>
   );
 }

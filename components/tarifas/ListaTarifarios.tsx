@@ -2,14 +2,16 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, FileText, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, FileText, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Casilla, Entrada, Selector } from "@/components/Campos";
+import { Switch } from "@/components/ui/switch";
+import { Entrada, Selector } from "@/components/Campos";
 import { SECCIONES, SERVICIOS, infoServicio } from "@/lib/etiquetas";
 import { formatoFecha } from "@/lib/calculo/formato";
 import type { Proveedor } from "@/lib/supabase/tipos";
 import type { TarifarioResumen } from "@/lib/tarifas/consultas";
-import { archivarTarifario, eliminarTarifario } from "@/lib/tarifas/acciones";
+import { ETIQUETA_ESTADO, textoVencimiento, type EstadoTarifario } from "@/lib/tarifas/estado";
+import { archivarTarifario, eliminarTarifario, establecerVigenciaTarifario } from "@/lib/tarifas/acciones";
 import { DialogoTarifario } from "./DialogoTarifario";
 import { DialogoTarifarioIA } from "./DialogoTarifarioIA";
 import { Proveedores } from "./Proveedores";
@@ -18,50 +20,56 @@ import { cn } from "@/lib/utils";
 interface Props {
   tarifarios: TarifarioResumen[];
   proveedores: Proveedor[];
-  mostrandoArchivados: boolean;
 }
 
-const VIGENCIA = {
-  vigente: { texto: "Vigente", clase: "bg-green-100 text-green-900" },
-  por_vencer: { texto: "Por vencer", clase: "bg-amber-100 text-amber-900" },
-  vencido: { texto: "Vencido", clase: "bg-red-100 text-red-900" },
-  sin_fecha: { texto: "Sin vigencia", clase: "bg-muted text-muted-foreground" },
-};
+type Filtro = "todos" | "usables" | EstadoTarifario;
+const FILTROS: { valor: Filtro; texto: string }[] = [
+  { valor: "todos", texto: "Todos" },
+  { valor: "usables", texto: "Disponibles" },
+  { valor: "por_vencer", texto: "Por vencer" },
+  { valor: "vencido", texto: "Vencidos" },
+  { valor: "desactivado", texto: "Desactivados" },
+];
+const cumple = (t: TarifarioResumen, f: Filtro) => (f === "todos" ? true : f === "usables" ? t.estado === "en_uso" || t.estado === "por_vencer" : t.estado === f);
 
-export function ListaTarifarios({ tarifarios, proveedores, mostrandoArchivados }: Props) {
+export function ListaTarifarios({ tarifarios, proveedores }: Props) {
   const router = useRouter();
   const [q, setQ] = useState("");
+  const [filtro, setFiltro] = useState<Filtro>("todos");
   const [seccion, setSeccion] = useState("");
   const [proveedor, setProveedor] = useState("");
   const [servicio, setServicio] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [pendiente, startTransition] = useTransition();
+
+  const conteo = (f: Filtro) => tarifarios.filter((t) => cumple(t, f)).length;
+  const vencidosSinApagar = tarifarios.filter((t) => t.estado === "vencido").length;
 
   const visibles = useMemo(() => {
     const t = q.trim().toLowerCase();
     return tarifarios.filter(
       (x) =>
+        cumple(x, filtro) &&
         (!seccion || x.seccion === seccion) &&
         (!proveedor || (proveedor === "propio" ? !x.proveedor_id : x.proveedor_id === proveedor)) &&
         (!servicio || x.servicio === servicio || x.servicio === null) &&
         (!t || `${x.nombre} ${x.proveedor_nombre ?? ""} ${x.origen ?? ""} ${x.destino ?? ""}`.toLowerCase().includes(t)),
     );
-  }, [tarifarios, q, seccion, proveedor, servicio]);
+  }, [tarifarios, q, filtro, seccion, proveedor, servicio]);
 
   const porSeccion = SECCIONES.map((s) => ({ ...s, items: visibles.filter((t) => t.seccion === s.valor) })).filter((s) => s.items.length > 0);
 
-  const archivar = (t: TarifarioResumen) =>
+  const correr = (accion: () => Promise<{ ok: boolean; error?: string }>) =>
     startTransition(async () => {
-      const r = await archivarTarifario(t.id, !t.archivado_at);
-      if (!r.ok) alert(r.error);
+      setError(null);
+      const r = await accion();
+      if (!r.ok) setError(r.error ?? "No se pudo completar.");
       router.refresh();
     });
+
   const eliminar = (t: TarifarioResumen) => {
-    if (!confirm(`¿Borrar DEFINITIVAMENTE "${t.nombre}" con sus ${t.n_conceptos + t.n_rutas} tarifas?\n\nEsto no se puede deshacer. Si solo quieres dejar de usarlo, mejor archívalo.`)) return;
-    startTransition(async () => {
-      const r = await eliminarTarifario(t.id);
-      if (!r.ok) alert(r.error);
-      router.refresh();
-    });
+    if (!confirm(`¿Borrar DEFINITIVAMENTE "${t.nombre}" con sus ${t.n_conceptos + t.n_rutas} tarifas?\n\nEsto no se puede deshacer. Si solo quieres dejar de usarlo, mejor desactívalo.`)) return;
+    correr(() => eliminarTarifario(t.id));
   };
 
   return (
@@ -81,10 +89,6 @@ export function ListaTarifarios({ tarifarios, proveedores, mostrandoArchivados }
           <option value="propio">Propios (Dams Cargo)</option>
           {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </Selector>
-        <label className="flex items-center gap-2 text-sm">
-          <Casilla checked={mostrandoArchivados} onChange={(e) => router.push(e.target.checked ? "/tarifas?archivados=1" : "/tarifas")} />
-          Mostrar archivados
-        </label>
         <div className="ml-auto flex gap-2">
           <Proveedores proveedores={proveedores} />
           <DialogoTarifarioIA proveedores={proveedores} />
@@ -93,6 +97,24 @@ export function ListaTarifarios({ tarifarios, proveedores, mostrandoArchivados }
           </DialogoTarifario>
         </div>
       </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {FILTROS.map((f) => (
+          <button key={f.valor} type="button" onClick={() => setFiltro(f.valor)}
+            className={cn("rounded-full border px-3 py-1 text-xs font-medium hover:bg-muted", filtro === f.valor && "border-primary bg-primary text-primary-foreground hover:bg-primary")}>
+            {f.texto} <span className="opacity-70">{conteo(f.valor)}</span>
+          </button>
+        ))}
+        <span className="ml-2 text-xs text-muted-foreground">Un tarifario <strong>vencido</strong> o <strong>desactivado</strong> no aparece al cotizar.</span>
+      </div>
+
+      {vencidosSinApagar > 0 && filtro !== "vencido" && (
+        <button type="button" onClick={() => setFiltro("vencido")} className="flex w-full items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-left text-sm text-red-900 hover:bg-red-100">
+          <AlertTriangle className="size-4 shrink-0" />
+          {vencidosSinApagar === 1 ? "1 tarifario venció y ya no se puede usar al cotizar." : `${vencidosSinApagar} tarifarios vencieron y ya no se pueden usar al cotizar.`} Ver cuáles para renovarlos o subir los nuevos.
+        </button>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {porSeccion.length === 0 && (
         <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">No hay tarifarios con ese filtro.</div>
@@ -106,24 +128,20 @@ export function ListaTarifarios({ tarifarios, proveedores, mostrandoArchivados }
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {s.items.map((t) => {
-              const v = VIGENCIA[t.vigencia];
+              const e = ETIQUETA_ESTADO[t.estado];
+              const apagado = t.estado === "desactivado" || t.estado === "vencido";
               return (
-                <div key={t.id} className={cn("flex flex-col rounded-lg border bg-card p-4", t.archivado_at && "opacity-60")}>
+                <div key={t.id} className={cn("flex flex-col rounded-lg border bg-card p-4", apagado && "bg-muted/30", t.estado === "vencido" && "border-red-200")}>
                   <div className="flex items-start justify-between gap-2">
-                    <Link href={`/tarifas/${t.id}`} className="font-medium text-primary hover:underline">{t.nombre}</Link>
-                    <span className={cn("shrink-0 rounded px-2 py-0.5 text-[11px] font-medium", t.archivado_at ? "bg-muted text-muted-foreground" : v.clase)}>
-                      {t.archivado_at ? "Archivado" : v.texto}
-                    </span>
+                    <Link href={`/tarifas/${t.id}`} className={cn("font-medium text-primary hover:underline", apagado && "opacity-70")}>{t.nombre}</Link>
+                    <span className={cn("shrink-0 rounded px-2 py-0.5 text-[11px] font-medium", e.clase)}>{e.texto}</span>
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {t.proveedor_nombre ?? "Propio · Dams Cargo"}
+                    <strong className="font-semibold text-foreground">{t.proveedor_nombre ?? "Propio · Dams Cargo"}</strong>
                     {t.servicio ? ` · ${infoServicio(t.servicio).texto}` : ""}
                     {t.origen || t.destino ? ` · ${t.origen ?? "—"} → ${t.destino ?? "—"}` : ""}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-                    {t.vigencia_desde || t.vigencia_hasta ? (
-                      <span>Vigencia {t.vigencia_desde ? formatoFecha(t.vigencia_desde) : "…"} – {t.vigencia_hasta ? formatoFecha(t.vigencia_hasta) : "…"}</span>
-                    ) : null}
                     <span className="num">{t.n_rutas > 0 ? `${t.n_rutas} rutas` : ""}{t.n_rutas > 0 && t.n_conceptos > 0 ? " · " : ""}{t.n_conceptos > 0 ? `${t.n_conceptos} conceptos` : ""}</span>
                     {t.documento_url && (
                       <a href={t.documento_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
@@ -131,11 +149,32 @@ export function ListaTarifarios({ tarifarios, proveedores, mostrandoArchivados }
                       </a>
                     )}
                   </div>
+
+                  <div className="mt-3 space-y-2 border-t pt-3">
+                    <label className="flex items-center justify-between gap-2 text-sm">
+                      <span>
+                        Usar al cotizar
+                        <span className="block text-[11px] text-muted-foreground">
+                          {t.estado === "vencido" ? "Venció: aunque esté prendido no se usa" : t.estado === "desactivado" ? "Apagado a mano" : "Disponible en cotizaciones"}
+                        </span>
+                      </span>
+                      <Switch checked={!t.archivado_at} disabled={pendiente} onCheckedChange={(prendido) => correr(() => archivarTarifario(t.id, !prendido))} aria-label={`Usar ${t.nombre} al cotizar`} />
+                    </label>
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className={cn(t.estado === "vencido" ? "font-medium text-red-700" : t.estado === "por_vencer" ? "font-medium text-amber-700" : "text-muted-foreground")}>
+                        {textoVencimiento(t)}
+                      </span>
+                      <label className="flex items-center gap-1 text-muted-foreground" title={t.vigencia_hasta ? `Vigente hasta ${formatoFecha(t.vigencia_hasta)}` : "Sin fecha de vencimiento"}>
+                        {t.estado === "vencido" ? "Renovar hasta" : "Hasta"}
+                        <input type="date" defaultValue={t.vigencia_hasta ?? ""} disabled={pendiente}
+                          onChange={(ev) => ev.target.value !== (t.vigencia_hasta ?? "") && correr(() => establecerVigenciaTarifario(t.id, t.vigencia_desde, ev.target.value || null))}
+                          className="h-7 rounded border bg-background px-1.5 text-xs text-foreground" />
+                      </label>
+                    </div>
+                  </div>
+
                   <div className="mt-3 flex items-center gap-1">
                     <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/tarifas/${t.id}`} />}>Abrir</Button>
-                    <Button variant="ghost" size="sm" disabled={pendiente} onClick={() => archivar(t)} title={t.archivado_at ? "Restaurar" : "Archivar: deja de usarse pero queda en el histórico"}>
-                      {t.archivado_at ? <ArchiveRestore /> : <Archive />} {t.archivado_at ? "Restaurar" : "Archivar"}
-                    </Button>
                     <Button variant="ghost" size="icon-sm" disabled={pendiente} className="ml-auto text-destructive" onClick={() => eliminar(t)} title="Borrar definitivamente">
                       <Trash2 />
                     </Button>
