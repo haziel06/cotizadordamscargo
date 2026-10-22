@@ -100,7 +100,8 @@ export const SERVICIOS: DefServicio[] = [
   {
     valor: "maritimo_fcl", grupo: "Marítimo", texto: "Marítimo FCL", descripcion: "Contenedor completo", ejemplo: "China → Guatemala, 1 × 40HC",
     secciones: ["flete_maritimo", "gastos_origen", "naviera", "gastos_locales", "documentacion", "transporte_local", "seguridad", "ayudantes"],
-    campos: ["contenedor", "kg", "cbm", "bultos", "comercial", "consignatario"],
+    // Contenedor completo: no se cuentan bultos ni CBM; el peso solo importa para los recargos por sobrepeso.
+    campos: ["contenedor", "kg", "comercial", "consignatario"],
     tiposCarga: ["FCL 20GP", "FCL 40GP", "FCL 40HC", "FCL 45HC"],
   },
   {

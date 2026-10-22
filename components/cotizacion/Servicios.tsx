@@ -4,11 +4,11 @@ import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Lock, Pac
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Casilla, Entrada, Selector } from "@/components/Campos";
-import { SECCIONES, conceptoAplica, infoSeccion, textoUnidad, type DefServicio } from "@/lib/etiquetas";
+import { SECCIONES, infoSeccion, textoUnidad, type DefServicio } from "@/lib/etiquetas";
 import { ventaLinea, ventaUnitariaLista } from "@/lib/calculo/linea";
 import { formatoMoneda, formatoFecha } from "@/lib/calculo/formato";
 import type { LineaEditable } from "@/lib/cotizaciones/esquema";
-import { cantidadPorUnidad, conceptosCourier } from "@/lib/cotizaciones/armado";
+import { cantidadPorUnidad, conceptoAplicaAServicio, conceptosCourier } from "@/lib/cotizaciones/armado";
 import type { Catalogo } from "@/lib/tarifas/consultas";
 import type { Concepto, SegmentoCourier, TarifaRuta, TipoServicio } from "@/lib/supabase/tipos";
 import type { Categoria, Moneda, Recargos, TipoMargen, Unidad } from "@/lib/calculo/tipos";
@@ -36,7 +36,17 @@ interface Props {
   /** Tarifas especiales del cliente de esta cotización, por concepto_id (ya en términos de venta si no eres admin). */
   tarifasCliente?: Record<string, { tipo_margen: TipoMargen; valor_margen: number }>;
   clienteNombre?: string;
+  /** Origen escrito en la carga: con él se buscan y comparan los fletes de todos los tarifarios vigentes. */
+  origen?: string;
+  tipoCarga?: string | null;
+  /** Se avisa al agregar un flete para que la carga tome su tránsito y vía. */
+  onRutaAgregada?: (r: TarifaRuta) => void;
 }
+
+const normalizar = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const palabras = (s: string) => normalizar(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
+/** "40HQ" y "40HC" son el mismo contenedor: se igualan para comparar con el tipo de carga elegido. */
+const claveContenedor = (s: string) => normalizar(s).replace(/[^a-z0-9]/g, "").replace(/hq/g, "hc");
 
 let contador = 0;
 const clave = () => `l-${Date.now()}-${contador++}`;
@@ -78,16 +88,48 @@ function PrecioVentaEditable({ valor, moneda, nombre, onConfirmar }: { valor: nu
 }
 const redondearDos = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin, autoArmar, tarifasCliente, clienteNombre }: Props) {
-  const conceptosAplicables = useMemo(() => catalogo.conceptos.filter((c) => conceptoAplica(c.servicios, tipos)), [catalogo.conceptos, tipos]);
+export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, lineas, catalogo, onChange, medidas, margenDefault, recargos, esAdmin, autoArmar, tarifasCliente, clienteNombre, origen, tipoCarga, onRutaAgregada }: Props) {
+  const tarifarioPorId = useMemo(() => new Map(catalogo.tarifarios.map((t) => [t.id, t])), [catalogo.tarifarios]);
+  const conceptosAplicables = useMemo(
+    () => catalogo.conceptos.filter((c) => conceptoAplicaAServicio(c, c.tarifario_id ? tarifarioPorId.get(c.tarifario_id)?.servicio : null, tipos)),
+    [catalogo.conceptos, tarifarioPorId, tipos],
+  );
+  const [gruposAbiertos, setGruposAbiertos] = useState<Record<string, boolean>>({});
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>(() => Object.fromEntries(servicio.secciones.map((s, i) => [s, i < 2])));
   const [busquedaRuta, setBusquedaRuta] = useState<Record<string, string>>({});
   const [verTodas, setVerTodas] = useState(false);
   const [filtroProv, setFiltroProv] = useState<Record<string, string>>({});
 
-  const vencidos = useMemo(() => catalogo.noDisponibles.filter((t) => t.estado === "vencido"), [catalogo.noDisponibles]);
+  // Solo avisa de los vencidos que servirían para este servicio (un LCL vencido no importa al cotizar un FCL).
+  const vencidos = useMemo(() => catalogo.noDisponibles.filter((t) => t.estado === "vencido" && (!t.servicio || tipos.includes(t.servicio))), [catalogo.noDisponibles, tipos]);
   const provNombre = useMemo(() => new Map(catalogo.proveedores.map((p) => [p.id, p.nombre])), [catalogo.proveedores]);
-  const tarifarioPorId = useMemo(() => new Map(catalogo.tarifarios.map((t) => [t.id, t])), [catalogo.tarifarios]);
+
+  /** Cuántas líneas de la cotización vienen de cada tarifario ("propio" = conceptos sin tarifario): responde "¿cuál estoy usando?". */
+  const usoPorTarifario = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of lineas) {
+      const ruta = l.ruta_id ? catalogo.rutas.find((r) => r.id === l.ruta_id) : undefined;
+      const concepto = !ruta && l.concepto_id ? catalogo.conceptos.find((c) => c.id === l.concepto_id) : undefined;
+      const tid = ruta ? ruta.tarifario_id : concepto ? (concepto.tarifario_id ?? "propio") : undefined;
+      if (tid) m.set(tid, (m.get(tid) ?? 0) + 1);
+    }
+    return m;
+  }, [lineas, catalogo.rutas, catalogo.conceptos]);
+  const nombreTarifario = (tid: string) => (tid === "propio" ? "Propio · Dams Cargo" : (tarifarioPorId.get(tid)?.nombre ?? "Tarifario"));
+
+  const palabrasOrigen = useMemo(() => palabras(origen ?? ""), [origen]);
+  const rutaCoincideOrigen = (r: TarifaRuta) => {
+    const h = normalizar(`${r.pais ?? ""} ${r.origen} ${r.via ?? ""}`);
+    return palabrasOrigen.every((p) => h.includes(p));
+  };
+  /** Si el tipo de carga es un contenedor (FCL 20GP…), solo las tarifas de ese tamaño; sin variante o sin tipo, todas. */
+  const varianteSirve = (r: TarifaRuta) => {
+    if (!r.variante || !tipoCarga) return true;
+    const v = claveContenedor(r.variante);
+    return !/^(20|40|45)/.test(v) || claveContenedor(tipoCarga).includes(v);
+  };
+  const ventaRuta = (r: TarifaRuta, moneda: Moneda) =>
+    ventaLinea({ nombre: "", categoria: "internacional", moneda, cantidad: 1, costo_unitario: Number(r.costo ?? 0), tipo_margen: r.tipo_margen, valor_margen: Number(r.valor_margen), lleva_iva: true, aplica_recargos: r.aplica_recargos }, recargos);
 
   /** Cantidad según la unidad del concepto (spec §7.2-B, ampliada con libras). */
   const cantidadPara = (u: Unidad) => cantidadPorUnidad(u, medidas.pesoCobrable, medidas.cbm);
@@ -121,6 +163,7 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
   const quitarConcepto = (id: string) => onChange((ls) => ls.filter((l) => l.concepto_id !== id));
 
   const agregarRuta = (r: TarifaRuta) => {
+    onRutaAgregada?.(r);
     const t = tarifarioPorId.get(r.tarifario_id);
     const prov = t?.proveedor_id ? provNombre.get(t.proveedor_id) : undefined;
     onChange((ls) => [
@@ -237,10 +280,18 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
             </span>
           </div>
         )}
+        {usoPorTarifario.size > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+            <span className="font-medium text-primary">Estás cotizando con:</span>
+            {[...usoPorTarifario.entries()].map(([tid, n]) => (
+              <span key={tid} className="rounded-full bg-white px-2.5 py-0.5 font-medium shadow-sm">{nombreTarifario(tid)} <span className="text-muted-foreground">· {n} {n === 1 ? "línea" : "líneas"}</span></span>
+            ))}
+          </div>
+        )}
         {secciones.map((sec) => {
           const info = infoSeccion(sec);
           const conceptos = conceptosAplicables.filter((c) => c.seccion === sec);
-          const tarifariosRuta = catalogo.tarifarios.filter((t) => t.seccion === sec && catalogo.rutas.some((r) => r.tarifario_id === t.id));
+          const tarifariosRuta = catalogo.tarifarios.filter((t) => t.seccion === sec && (!t.servicio || tipos.includes(t.servicio)) && catalogo.rutas.some((r) => r.tarifario_id === t.id));
           const propias = lineas.filter((l) => seccionDe(l) === sec);
           const abierta = abiertas[sec] ?? false;
           const esAjena = sec === "gastos_ajenos";
@@ -250,15 +301,23 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
             const k = c.tarifario_id ?? "sin";
             grupos.set(k, [...(grupos.get(k) ?? []), c]);
           }
-          // Cotizar "con" un proveedor: si la sección tiene tarifas de varias empresas, se puede ver solo una.
-          const claveProv = (t?: { proveedor_id: string | null }) => t?.proveedor_id ?? "propio";
-          const nombreProv = (t?: { proveedor_id: string | null }) => (t?.proveedor_id ? (provNombre.get(t.proveedor_id) ?? "Proveedor") : "Propio · Dams Cargo");
-          const proveedoresSec = new Map<string, string>();
-          for (const t of tarifariosRuta) proveedoresSec.set(claveProv(t), nombreProv(t));
-          for (const tid of grupos.keys()) { const t = tarifarioPorId.get(tid); proveedoresSec.set(claveProv(t), nombreProv(t)); }
-          const elegido = proveedoresSec.has(filtroProv[sec] ?? "") ? filtroProv[sec] : "";
-          const rutasVisibles = tarifariosRuta.filter((t) => !elegido || claveProv(t) === elegido);
-          const gruposVisibles = [...grupos.entries()].filter(([tid]) => !elegido || claveProv(tarifarioPorId.get(tid)) === elegido);
+          // Cotizar "con" un tarifario: si la sección tiene varios (HYDE, Charter Link…), se puede ver solo uno.
+          const claveGrupo = (tid: string) => (tid === "sin" ? "propio" : tid);
+          const tarifariosSec = new Map<string, string>();
+          for (const t of tarifariosRuta) tarifariosSec.set(t.id, t.nombre);
+          for (const tid of grupos.keys()) tarifariosSec.set(claveGrupo(tid), nombreTarifario(claveGrupo(tid)));
+          const elegido = tarifariosSec.has(filtroProv[sec] ?? "") ? filtroProv[sec] : "";
+          const rutasVisibles = tarifariosRuta.filter((t) => !elegido || t.id === elegido);
+          const gruposVisibles = [...grupos.entries()].filter(([tid]) => !elegido || claveGrupo(tid) === elegido);
+          // Comparador: los fletes de este origen en todos los tarifarios vigentes, de menor a mayor precio.
+          const esFlete = sec === "flete_maritimo" || sec === "flete_aereo";
+          const comparables = esFlete && palabrasOrigen.length
+            ? rutasVisibles
+                .flatMap((t) => catalogo.rutas.filter((r) => r.tarifario_id === t.id && rutaCoincideOrigen(r) && varianteSirve(r)).map((r) => ({ r, t, venta: ventaRuta(r, t.moneda) })))
+                .filter((x) => x.venta > 0)
+                .sort((a, b) => a.venta - b.venta)
+                .slice(0, 10)
+            : [];
           return (
             <section key={sec} className={cn("rounded-lg border", esAjena && "border-dashed")}>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left" onClick={() => setAbiertas((a) => ({ ...a, [sec]: !abierta }))}>
@@ -270,16 +329,46 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
 
               {abierta && (
                 <div className="space-y-3 border-t px-3 py-3">
-                  {proveedoresSec.size > 1 && (
+                  {tarifariosSec.size > 1 && (
                     <div className="flex flex-wrap items-center gap-1.5 text-xs">
                       <span className="text-muted-foreground">Cotizar con:</span>
-                      {[["", "Todos"], ...proveedoresSec.entries()].map(([k, nombre]) => (
-                        <button key={k || "todos"} type="button" onClick={() => setFiltroProv((f) => ({ ...f, [sec]: k }))}
-                          className={cn("rounded-full border px-2.5 py-0.5 font-medium hover:bg-muted", elegido === k && "border-primary bg-primary text-primary-foreground hover:bg-primary")}>
-                          {nombre}
-                        </button>
-                      ))}
+                      {[["", "Todos"], ...tarifariosSec.entries()].map(([k, nombre]) => {
+                        const n = k ? (usoPorTarifario.get(k) ?? 0) : 0;
+                        return (
+                          <button key={k || "todos"} type="button" onClick={() => setFiltroProv((f) => ({ ...f, [sec]: k }))}
+                            className={cn("rounded-full border px-2.5 py-0.5 font-medium hover:bg-muted", elegido === k && "border-primary bg-primary text-primary-foreground hover:bg-primary")}>
+                            {nombre}{n > 0 && <span className="ml-1 rounded-full bg-green-600 px-1.5 text-[10px] text-white">en uso · {n}</span>}
+                          </button>
+                        );
+                      })}
                     </div>
+                  )}
+                  {esFlete && palabrasOrigen.length > 0 && (
+                    comparables.length > 0 ? (
+                      <div className="rounded-md border border-primary/30 bg-primary/5 p-2">
+                        <div className="mb-1 text-xs font-medium text-primary">Fletes desde «{origen}»{tipoCarga ? ` · ${tipoCarga}` : ""}: compara y agrega</div>
+                        <ul className="divide-y rounded border bg-white">
+                          {comparables.map(({ r, t, venta }, i) => (
+                            <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1.5 text-sm">
+                              <span className="min-w-40 font-medium">{t.nombre}</span>
+                              <span>{r.origen}</span>
+                              {r.variante && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">{r.variante}</span>}
+                              <span className="text-xs text-muted-foreground">{r.via && r.via !== "Direct" ? `vía ${r.via}` : "directo"}{r.transito ? ` · ${r.transito}${/[a-z]/i.test(r.transito) ? "" : " días"}` : ""}</span>
+                              {i === 0 && comparables.length > 1 && <span className="rounded bg-green-100 px-1.5 py-0.5 text-[11px] text-green-900">más económico</span>}
+                              <span className="num ml-auto font-semibold">{formatoMoneda(venta, t.moneda)} <span className="text-xs font-normal text-muted-foreground">/ {textoUnidad(r.unidad).replace("por ", "")}</span></span>
+                              {esAdmin && r.costo != null && <span className="text-[10px] text-muted-foreground">costo {formatoMoneda(Number(r.costo), t.moneda)}</span>}
+                              {lineas.some((l) => l.ruta_id === r.id)
+                                ? <span className="text-xs font-medium text-green-700">Ya agregado</span>
+                                : <Button size="xs" onClick={() => agregarRuta(r)}><Plus /> Agregar</Button>}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        No hay fletes para «{origen}»{tipoCarga ? ` en ${tipoCarga}` : ""} en los tarifarios vigentes. Revisa el nombre del puerto o busca abajo por tarifario.
+                      </p>
+                    )
                   )}
                   {/* Rutas (fletes por origen) */}
                   {rutasVisibles.map((t) => {
@@ -289,8 +378,9 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                     return (
                       <div key={t.id} className="rounded border bg-muted/30 p-2">
                         <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <span className="font-medium">{t.proveedor_id ? provNombre.get(t.proveedor_id) : "Propio"}</span>
-                          <span className="text-xs text-muted-foreground">{t.nombre}</span>
+                          <span className="font-medium">{t.nombre}</span>
+                          {t.proveedor_id && !t.nombre.toLowerCase().includes((provNombre.get(t.proveedor_id) ?? "").toLowerCase()) && <span className="text-xs text-muted-foreground">{provNombre.get(t.proveedor_id)}</span>}
+                          {(usoPorTarifario.get(t.id) ?? 0) > 0 && <span className="rounded bg-green-600 px-1.5 py-0.5 text-[11px] text-white">en uso · {usoPorTarifario.get(t.id)}</span>}
                           {t.estado === "por_vencer" && t.vigencia_hasta && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-900">Vence el {formatoFecha(t.vigencia_hasta)}</span>}
                           {t.estado === "en_uso" && t.vigencia_hasta && <span className="rounded bg-green-100 px-1.5 py-0.5 text-[11px] text-green-900">Vigente al {formatoFecha(t.vigencia_hasta)}</span>}
                           <Entrada placeholder={`Buscar origen entre ${rutas.length} rutas… (ej. Xiamen)`} value={busquedaRuta[t.id] ?? ""}
@@ -320,14 +410,19 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                   {/* Conceptos por proveedor/tarifario */}
                   {gruposVisibles.map(([tid, cs]) => {
                     const t = tarifarioPorId.get(tid);
+                    const usados = cs.filter((c) => marcados.has(c.id)).length;
+                    // Con varios grupos, solo se abre el que se eligió o el que ya se está usando: menos cuadros a la vista.
+                    const abiertoG = gruposAbiertos[`${sec}|${tid}`] ?? (elegido !== "" || gruposVisibles.length === 1 || usados > 0);
                     return (
                       <div key={tid}>
-                        <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground">{t?.proveedor_id ? provNombre.get(t.proveedor_id) : "Propio · Dams Cargo"}</span>
-                          {t && <span>· {t.nombre}</span>}
+                        <button type="button" className="mb-1 flex w-full items-center gap-2 text-left text-xs text-muted-foreground" onClick={() => setGruposAbiertos((g) => ({ ...g, [`${sec}|${tid}`]: !abiertoG }))}>
+                          {abiertoG ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                          <span className="font-medium text-foreground">{nombreTarifario(claveGrupo(tid))}</span>
+                          <span>{cs.length} {cs.length === 1 ? "concepto" : "conceptos"}</span>
+                          {usados > 0 && <span className="rounded bg-green-600 px-1.5 py-0.5 text-[11px] text-white">en uso · {usados}</span>}
                           {t?.estado === "por_vencer" && t.vigencia_hasta && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-900">Vence el {formatoFecha(t.vigencia_hasta)}</span>}
-                        </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                        </button>
+                        {abiertoG && <div className="flex flex-wrap gap-x-4 gap-y-1.5 pl-5">
                           {cs.map((c) => {
                             const especial = tarifasCliente?.[c.id];
                             const ventaUnit = especial
@@ -344,7 +439,7 @@ export function Servicios({ servicio, tipos, segmentoCourier, fueraPerimetro, li
                               </label>
                             );
                           })}
-                        </div>
+                        </div>}
                       </div>
                     );
                   })}

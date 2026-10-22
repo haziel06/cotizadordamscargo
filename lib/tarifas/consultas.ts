@@ -76,7 +76,7 @@ export async function catalogoParaCotizar(opciones: { ocultarCostos?: boolean; r
   const usables = conEstado.filter((t) => tarifarioUsable(t, hoy));
   const noDisponibles = conEstado
     .filter((t) => !tarifarioUsable(t, hoy))
-    .map((t) => ({ id: t.id, nombre: t.nombre, estado: t.estado, vigencia_hasta: t.vigencia_hasta, vigencia_desde: t.vigencia_desde }));
+    .map((t) => ({ id: t.id, nombre: t.nombre, servicio: t.servicio, estado: t.estado, vigencia_hasta: t.vigencia_hasta, vigencia_desde: t.vigencia_desde }));
   const ocultos = new Set(noDisponibles.map((t) => t.id));
   // Los conceptos sin tarifario (propios de Dams Cargo) siempre se pueden usar.
   const conceptosVigentes = (conceptos ?? []).filter((c) => !c.tarifario_id || !ocultos.has(c.tarifario_id));

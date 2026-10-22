@@ -1,7 +1,20 @@
-import type { Concepto, SegmentoCourier } from "@/lib/supabase/tipos";
+import type { Concepto, SegmentoCourier, TipoServicio } from "@/lib/supabase/tipos";
 import type { Unidad } from "@/lib/calculo/tipos";
 
 export const LB_POR_KG = 2.20462;
+
+/**
+ * ¿Un concepto sirve para esta cotización? Si el concepto declara sus servicios, manda eso; si no, hereda el
+ * servicio de su tarifario (el de TACSA "marítimo consolidado" no debe salir en un contenedor completo FCL).
+ */
+export function conceptoAplicaAServicio(
+  concepto: { servicios: TipoServicio[] | null },
+  servicioTarifario: TipoServicio | null | undefined,
+  tipos: TipoServicio[],
+): boolean {
+  if (concepto.servicios && concepto.servicios.length > 0) return tipos.some((t) => concepto.servicios!.includes(t));
+  return !servicioTarifario || tipos.includes(servicioTarifario);
+}
 
 /** Cantidad automática de una línea según la unidad de su concepto (spec §7.2-B, ampliada con libras). */
 export function cantidadPorUnidad(u: Unidad, pesoCobrable: number, cbm: number): number {

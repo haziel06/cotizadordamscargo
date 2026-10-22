@@ -4,9 +4,9 @@ import { sesionActual, type Sesion } from "@/lib/sesion";
 import { catalogoParaCotizar } from "@/lib/tarifas/consultas";
 import { tarifasEspecialesCliente } from "@/lib/clientes/consultas";
 import { guardarCotizacion } from "@/lib/cotizaciones/acciones";
-import { cantidadPorUnidad, conceptosCourier } from "@/lib/cotizaciones/armado";
+import { cantidadPorUnidad, conceptoAplicaAServicio, conceptosCourier } from "@/lib/cotizaciones/armado";
 import type { LineaEditable } from "@/lib/cotizaciones/esquema";
-import { conceptoAplica, LIMITE_TICKET_USD } from "@/lib/etiquetas";
+import { LIMITE_TICKET_USD } from "@/lib/etiquetas";
 import { pesoCobrable } from "@/lib/calculo/peso";
 import { formatoMoneda, hoyIso } from "@/lib/calculo/formato";
 import type { Concepto, SegmentoCourier, TipoServicio } from "@/lib/supabase/tipos";
@@ -71,7 +71,8 @@ export async function crearCotizacionDesdeChat(datos: DatosCotizacionChat, sesio
   const tarifasCliente = await tarifasEspecialesCliente(clienteRegistrado?.id ?? null, { ocultarCostos: !sesion.esAdmin });
 
   const peso = pesoCobrable(kg, null).peso;
-  const aplicables = catalogo.conceptos.filter((c) => conceptoAplica(c.servicios, [servicio]));
+  const servicioDe = new Map(catalogo.tarifarios.map((t) => [t.id, t.servicio]));
+  const aplicables = catalogo.conceptos.filter((c) => conceptoAplicaAServicio(c, c.tarifario_id ? servicioDe.get(c.tarifario_id) : null, [servicio]));
   const elegidos: Concepto[] = segmento
     ? conceptosCourier(aplicables, { segmento, pesoCobrable: peso, fueraPerimetro: datos.fuera_perimetro, yaMarcados: new Set() })
     : [];

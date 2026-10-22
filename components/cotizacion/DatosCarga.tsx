@@ -18,13 +18,15 @@ interface Props {
   clientes: Cliente[];
   peso: { peso: number; gano: GanadorPeso };
   servicio: DefServicio;
+  /** Puertos de origen que hay en los tarifarios vigentes (sugerencias al escribir el origen). */
+  puertos?: string[];
 }
 
 const LB_POR_KG = 2.20462;
 const aLb = (kg: number) => Math.round(kg * LB_POR_KG * 100) / 100;
 const aKg = (lb: number) => Math.round((lb / LB_POR_KG) * 10000) / 10000;
 
-export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: Props) {
+export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio, puertos = [] }: Props) {
   const muestra = (campo: CampoCarga) => servicio.campos.includes(campo);
   const kg = Number(c.kilogramos) || 0;
   const [sugerencias, setSugerencias] = useState<Cliente[]>([]);
@@ -207,7 +209,12 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
           </>
         )}
         <Campo etiqueta="Origen" className="md:col-span-3">
-          <Entrada value={c.origen ?? ""} onChange={(e) => onChange({ origen: e.target.value })} placeholder={esCourier ? "Miami, Estados Unidos" : "Xiamen, China"} />
+          <Entrada value={c.origen ?? ""} onChange={(e) => onChange({ origen: e.target.value })} placeholder={esCourier ? "Miami, Estados Unidos" : "Escribe y elige un puerto"} list="puertos-origen" autoComplete="off" />
+          {!esCourier && puertos.length > 0 && (
+            <datalist id="puertos-origen">
+              {puertos.map((p) => <option key={p} value={p} />)}
+            </datalist>
+          )}
         </Campo>
         <Campo etiqueta="Destino" className="md:col-span-3">
           <Entrada value={c.destino ?? "Guatemala"} onChange={(e) => onChange({ destino: e.target.value })} />
@@ -215,10 +222,10 @@ export function DatosCarga({ cabecera: c, onChange, clientes, peso, servicio }: 
         {muestra("comercial") && (
           <>
             <Campo etiqueta="Tránsito" className="md:col-span-3">
-              <Entrada value={c.transito ?? ""} onChange={(e) => onChange({ transito: e.target.value })} placeholder="35 – 45 días" />
+              <Entrada value={c.transito ?? ""} onChange={(e) => onChange({ transito: e.target.value })} placeholder="Se llena al elegir un flete" />
             </Campo>
-            <Campo etiqueta="Routing" className="md:col-span-6">
-              <Entrada value={c.routing ?? ""} onChange={(e) => onChange({ routing: e.target.value })} placeholder="Vía Hong Kong – Puerto Quetzal" />
+            <Campo etiqueta="Routing (vía)" className="md:col-span-6">
+              <Entrada value={c.routing ?? ""} onChange={(e) => onChange({ routing: e.target.value })} placeholder="Se llena al elegir un flete (o escríbelo)" />
             </Campo>
           </>
         )}

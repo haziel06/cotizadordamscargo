@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cantidadPorUnidad, conceptosCourier } from "../armado";
+import { cantidadPorUnidad, conceptoAplicaAServicio, conceptosCourier } from "../armado";
 import { aContenidosGemini } from "@/lib/ia/proveedores/gemini";
 import type { Concepto } from "@/lib/supabase/tipos";
 
@@ -54,5 +54,19 @@ describe("aContenidosGemini", () => {
     expect(r[2].role).toBe("user");
     expect(r[2].parts).toHaveLength(2);
     expect(r[2].parts[0]).toEqual({ functionResponse: { name: "a", response: { resultado: { ok: 1 } } } });
+  });
+});
+
+describe("conceptoAplicaAServicio", () => {
+  it("hereda el servicio del tarifario: TACSA LCL no sale en un FCL", () => {
+    expect(conceptoAplicaAServicio({ servicios: [] }, "maritimo_lcl", ["maritimo_fcl"])).toBe(false);
+    expect(conceptoAplicaAServicio({ servicios: [] }, "maritimo_lcl", ["maritimo_lcl"])).toBe(true);
+  });
+  it("sin servicio en tarifario ni concepto sirve para todo", () => {
+    expect(conceptoAplicaAServicio({ servicios: null }, null, ["maritimo_fcl"])).toBe(true);
+  });
+  it("lo que declara el concepto manda sobre el tarifario", () => {
+    expect(conceptoAplicaAServicio({ servicios: ["courier"] }, null, ["maritimo_fcl"])).toBe(false);
+    expect(conceptoAplicaAServicio({ servicios: ["maritimo_fcl"] }, "courier", ["maritimo_fcl"])).toBe(true);
   });
 });

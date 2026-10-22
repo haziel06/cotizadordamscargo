@@ -12,7 +12,7 @@ import { guardarCotizacion } from "@/lib/cotizaciones/acciones";
 import { obtenerTarifasEspecialesAccion } from "@/lib/clientes/acciones";
 import type { CabeceraForm, LineaEditable } from "@/lib/cotizaciones/esquema";
 import type { Defaults, TextosLegales } from "@/lib/config";
-import type { Cliente } from "@/lib/supabase/tipos";
+import type { Cliente, TarifaRuta } from "@/lib/supabase/tipos";
 import type { Catalogo } from "@/lib/tarifas/consultas";
 import { LIMITE_TICKET_USD, servicioCombinado, textosPorDefecto } from "@/lib/etiquetas";
 import { DatosCarga } from "./DatosCarga";
@@ -78,6 +78,29 @@ export function EditorCotizacion(p: EditorProps) {
     (id ? obtenerTarifasEspecialesAccion(id) : Promise.resolve({})).then(setTarifasCliente);
   }, [cabecera.cliente_id]);
 
+  // Puertos de origen que existen en los tarifarios vigentes de estos servicios: se ofrecen al escribir el origen.
+  const puertos = useMemo(() => {
+    const servicioDe = new Map(p.catalogo.tarifarios.map((t) => [t.id, t.servicio]));
+    const s = new Set<string>();
+    for (const r of p.catalogo.rutas) {
+      const sv = servicioDe.get(r.tarifario_id);
+      if (sv && !cabecera.tipos_servicio.includes(sv)) continue;
+      s.add(r.pais ? `${r.origen}, ${r.pais}` : r.origen);
+    }
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }, [p.catalogo.tarifarios, p.catalogo.rutas, cabecera.tipos_servicio]);
+
+  // Al elegir un flete, la carga toma su tránsito, su vía y su origen si estaban vacíos (lo escrito a mano nunca se pisa).
+  const alAgregarRuta = (r: TarifaRuta) => {
+    setCabecera((x) => ({
+      ...x,
+      origen: x.origen || (r.pais ? `${r.origen}, ${r.pais}` : r.origen),
+      transito: x.transito || (r.transito ? (/[a-z]/i.test(r.transito) ? r.transito.replace(/days?/i, "días") : `${r.transito} días`) : ""),
+      routing: x.routing || (r.via && r.via.toLowerCase() !== "direct" ? `Vía ${r.via}` : "Directo"),
+    }));
+    setSucio(true);
+  };
+
   const cambiarCabecera = (c: Partial<CabeceraForm>) => {
     setCabecera((x) => ({ ...x, ...c }));
     setSucio(true);
@@ -133,7 +156,7 @@ export function EditorCotizacion(p: EditorProps) {
         </div>
 
         <fieldset disabled={!p.puedeEditar} className="min-w-0 space-y-6 disabled:opacity-80">
-          <DatosCarga cabecera={cabecera} onChange={cambiarCabecera} clientes={p.clientes} peso={peso} servicio={servicio} />
+          <DatosCarga cabecera={cabecera} onChange={cambiarCabecera} clientes={p.clientes} peso={peso} servicio={servicio} puertos={puertos} />
 
           <Servicios
             servicio={servicio}
@@ -150,6 +173,9 @@ export function EditorCotizacion(p: EditorProps) {
             autoArmar={p.autoArmarIA}
             tarifasCliente={tarifasCliente}
             clienteNombre={cabecera.cliente_nombre}
+            origen={cabecera.origen}
+            tipoCarga={cabecera.tipo_carga}
+            onRutaAgregada={alAgregarRuta}
           />
 
           <Descuentos descuentos={cabecera.descuentos} onChange={(d) => cambiarCabecera({ descuentos: d })} />
