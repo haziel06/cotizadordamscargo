@@ -1,6 +1,7 @@
 import { crearClienteServidor } from "@/lib/supabase/server";
 import type { ExtraccionTarifario } from "@/lib/ia/tarifarioIA";
 import { hoyIso } from "@/lib/calculo/formato";
+import { leerConfig } from "@/lib/config";
 import { calcularCambios, type PropuestaActualizacion } from "./diferencias";
 
 type Supabase = Awaited<ReturnType<typeof crearClienteServidor>>;
@@ -8,21 +9,22 @@ type Supabase = Awaited<ReturnType<typeof crearClienteServidor>>;
 /** Compara lo extraído del documento con las filas activas del tarifario y arma la propuesta (no guarda nada). */
 export async function proponerActualizacion(tarifarioId: string, extraccion: ExtraccionTarifario): Promise<PropuestaActualizacion | null> {
   const supabase = await crearClienteServidor();
-  const [{ data: t }, { data: rutas }, { data: conceptos }] = await Promise.all([
-    supabase.from("tarifarios").select("id, nombre").eq("id", tarifarioId).maybeSingle(),
-    supabase.from("tarifas_ruta").select("id, origen, via, variante, naviera, costo, minimo").eq("tarifario_id", tarifarioId).is("archivado_at", null),
-    supabase.from("conceptos").select("id, nombre, costo, minimo").eq("tarifario_id", tarifarioId).is("archivado_at", null),
+  const [{ data: t }, { data: rutas }, { data: conceptos }, { recargos }] = await Promise.all([
+    supabase.from("tarifarios").select("id, nombre, moneda").eq("id", tarifarioId).maybeSingle(),
+    supabase.from("tarifas_ruta").select("id, origen, via, variante, naviera, costo, minimo, tipo_margen, valor_margen, aplica_recargos").eq("tarifario_id", tarifarioId).is("archivado_at", null),
+    supabase.from("conceptos").select("id, nombre, costo, minimo, tipo_margen, valor_margen, aplica_recargos").eq("tarifario_id", tarifarioId).is("archivado_at", null),
+    leerConfig(),
   ]);
   if (!t) return null;
   const num = (v: unknown) => (v == null ? null : Number(v));
   const cambios = calcularCambios(
     {
-      rutas: (rutas ?? []).map((r) => ({ id: r.id, origen: r.origen, via: r.via, variante: r.variante, naviera: r.naviera, costo: num(r.costo), minimo: num(r.minimo) })),
-      conceptos: (conceptos ?? []).map((c) => ({ id: c.id, nombre: c.nombre, costo: num(c.costo), minimo: num(c.minimo) })),
+      rutas: (rutas ?? []).map((r) => ({ id: r.id, origen: r.origen, via: r.via, variante: r.variante, naviera: r.naviera, costo: num(r.costo), minimo: num(r.minimo), tipo_margen: r.tipo_margen, valor_margen: Number(r.valor_margen), aplica_recargos: r.aplica_recargos })),
+      conceptos: (conceptos ?? []).map((c) => ({ id: c.id, nombre: c.nombre, costo: num(c.costo), minimo: num(c.minimo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen), aplica_recargos: c.aplica_recargos })),
     },
     extraccion.filas,
   );
-  return { tarifarioId, tarifarioNombre: t.nombre, vigencia_desde: extraccion.vigencia_desde, vigencia_hasta: extraccion.vigencia_hasta, condiciones: extraccion.condiciones_generales, cambios };
+  return { tarifarioId, tarifarioNombre: t.nombre, vigencia_desde: extraccion.vigencia_desde, vigencia_hasta: extraccion.vigencia_hasta, condiciones: extraccion.condiciones_generales, moneda: t.moneda, recargos, cambios };
 }
 
 const sinIdentidad = ({ id: _id, created_at: _c, updated_at: _u, ...resto }: Record<string, unknown>) => {

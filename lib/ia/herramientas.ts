@@ -8,7 +8,7 @@ import { formatoFecha, formatoMoneda } from "@/lib/calculo/formato";
 import { ETIQUETA_ESTADO } from "@/lib/tarifas/estado";
 import { cotizacionesDeCliente, listarClientes, obtenerCliente } from "@/lib/clientes/consultas";
 import { clientesSimilares } from "@/lib/clientes/buscar";
-import { buscarFletes, normalizar, palabras, rutaCoincideOrigen, textoTransito, textoVia } from "@/lib/cotizaciones/fletes";
+import { buscarFletes, normalizar, palabras, rutaCoincideOrigen, textoTransito, textoVia, ventaRuta } from "@/lib/cotizaciones/fletes";
 import { textoUnidad } from "@/lib/etiquetas";
 import { coincideProveedor, extraerTarifarioDeDocumento } from "./tarifarioIA";
 import { proponerActualizacion } from "@/lib/tarifas/actualizacion";
@@ -115,7 +115,7 @@ const buscarTarifas: HerramientaIA = {
           moneda: c.moneda,
           unidad: c.unidad,
           precio_venta,
-          ...(sesion.esAdmin ? { costo: Number(c.costo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen), minimo: c.minimo } : {}),
+          ...(sesion.esAdmin ? { precio_compra_proveedor: Number(c.costo), tipo_margen: c.tipo_margen, valor_margen: Number(c.valor_margen), minimo: c.minimo, ganancia_por_unidad: Math.round((precio_venta - Number(c.costo)) * 100) / 100 } : {}),
         };
       }),
     };
@@ -242,7 +242,7 @@ const buscarFletesHerramienta: HerramientaIA = {
         n: i + 1, ref: o.ruta.id.slice(0, 8), tarifario: o.tarifario.nombre, naviera: o.ruta.naviera, origen: o.ruta.origen, pais: o.ruta.pais, variante: o.ruta.variante,
         via: textoVia(o.ruta.via), transito: o.ruta.transito ? textoTransito(o.ruta.transito) : null, precio_venta: precio(o),
         vigente_hasta: catalogo.tarifarios.find((t) => t.id === o.ruta.tarifario_id)?.vigencia_hasta ?? null,
-        ...(sesion.esAdmin ? { costo: o.ruta.costo } : {}),
+        ...(sesion.esAdmin ? { precio_compra_proveedor: o.ruta.costo, margen_actual: `${o.ruta.tipo_margen === "porcentaje" ? `${o.ruta.valor_margen}%` : o.ruta.tipo_margen === "monto_fijo" ? `+${o.ruta.valor_margen} fijo` : `precio fijo ${o.ruta.valor_margen}`}`, ganancia_por_unidad: Math.round((o.venta - Number(o.ruta.costo ?? 0)) * 100) / 100 } : {}),
       })),
       instruccion: "Resume las opciones en una frase y pregunta cuál elige (las tarjetas con botones ya aparecen debajo). No crees la cotización hasta que elija.",
     };
@@ -307,6 +307,8 @@ const crearCotizacion: HerramientaIA = {
       telefono: { type: "string" },
       fuera_perimetro: { type: "boolean", description: "Courier con entrega fuera del perímetro capitalino" },
       notas_internas: { type: "string" },
+      margen_flete_pct: { type: "number", description: "SOLO administradores: margen % exacto para el flete de esta cotización (no cambia la tarifa guardada)" },
+      margenes_cargos: { type: "array", items: { type: "object", properties: { nombre: { type: "string" }, porcentaje: { type: "number" } }, required: ["nombre", "porcentaje"] }, description: "SOLO administradores: margen % exacto para cargos concretos de esta cotización" },
       conceptos_adicionales: { type: "array", items: { type: "string" }, description: "Nombres de otros servicios de la base de tarifas a incluir (ej. 'trámite aduanal'). Busca primero con buscarTarifas si no estás seguro del nombre." },
     },
     required: ["cliente", "servicio"],
@@ -367,8 +369,57 @@ const actualizarTarifario: HerramientaIA = {
   },
 };
 
+const cambiarMargen: HerramientaIA = {
+  nombre: "cambiarMargen",
+  descripcion: "SOLO administradores. Cambia de forma PERMANENTE el margen (%) de una tarifa guardada: un flete (ruta_ref de buscarFletes) o un cargo (por nombre). Afecta a todas las cotizaciones futuras. Antes pregúntale al administrador si lo quiere permanente o solo para la cotización en curso; si es solo para la cotización usa margen_flete_pct / margenes_cargos en crearCotizacion. Solo llámala con confirmado=true después de que él lo confirme explícitamente.",
+  parametros: {
+    type: "object",
+    properties: {
+      ruta_ref: { type: "string", description: "Código de 8 caracteres del flete (de buscarFletes)" },
+      concepto: { type: "string", description: "Nombre del cargo cuyo margen se cambia" },
+      porcentaje: { type: "number", description: "Nuevo margen en %, entre 0 y 300" },
+      confirmado: { type: "boolean", description: "true solo si el administrador confirmó el cambio permanente" },
+    },
+    required: ["porcentaje", "confirmado"],
+  },
+  async ejecutar(args, { sesion }: ContextoHerramienta) {
+    if (!sesion.esAdmin) return { error: "Solo un administrador puede cambiar márgenes." };
+    const pct = Number(args.porcentaje);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 300) return { error: "El margen debe estar entre 0 y 300 %." };
+    if (args.confirmado !== true) return { error: "Falta la confirmación.", instruccion: "Pregúntale si quiere cambiarlo de forma permanente para todas las cotizaciones futuras y vuelve a llamar con confirmado=true solo si dice que sí." };
+    const supabase = await crearClienteServidor();
+    const { recargos } = await leerConfig();
+    const catalogo = await catalogoParaCotizar({ ocultarCostos: false, recargos });
+    const ref = typeof args.ruta_ref === "string" ? args.ruta_ref.toLowerCase().replace(/^ref:/, "") : "";
+    if (ref) {
+      const r = catalogo.rutas.find((x) => x.id.toLowerCase().startsWith(ref));
+      if (!r) return { error: "No encontré ese flete entre los tarifarios vigentes." };
+      if (r.costo == null) return { error: "Ese flete no tiene precio de compra, no se le puede aplicar un margen." };
+      const antes = ventaRuta(r, catalogo.tarifarios.find((t) => t.id === r.tarifario_id)?.moneda ?? "USD", recargos);
+      const { error } = await supabase.from("tarifas_ruta").update({ tipo_margen: "porcentaje", valor_margen: pct }).eq("id", r.id);
+      if (error) return { error: "No se pudo guardar el cambio." };
+      const despues = ventaRuta({ ...r, tipo_margen: "porcentaje", valor_margen: pct }, catalogo.tarifarios.find((t) => t.id === r.tarifario_id)?.moneda ?? "USD", recargos);
+      return { cambiado: true, flete: `${r.origen}${r.naviera ? ` · ${r.naviera}` : ""}${r.variante ? ` · ${r.variante}` : ""}`, margen_nuevo: `${pct}%`, precio_venta_antes: antes, precio_venta_ahora: despues };
+    }
+    const buscado = normalizar(String(args.concepto ?? ""));
+    if (!buscado) return { error: "Dime qué flete (ruta_ref) o qué cargo (concepto) cambiar." };
+    const candidatos = catalogo.conceptos.filter((c) => normalizar(c.nombre).includes(buscado));
+    const exacto = candidatos.filter((c) => normalizar(c.nombre) === buscado);
+    const lista = exacto.length === 1 ? exacto : candidatos;
+    if (lista.length === 0) return { error: `No encontré ningún cargo llamado «${args.concepto}».` };
+    if (lista.length > 1) return { ambiguo: true, opciones: lista.slice(0, 8).map((c) => c.nombre), instruccion: "Pregúntale cuál de estos cargos." };
+    const c = lista[0];
+    if (c.cuenta_ajena || (c.tipo_margen === "precio_fijo" && Number(c.costo) <= 0)) return { error: `«${c.nombre}» es un precio fijo o un pago a tercero: no tiene margen sobre un costo.` };
+    const venta = (tipo: typeof c.tipo_margen, valor: number) => ventaLinea({ nombre: c.nombre, categoria: c.categoria, moneda: c.moneda, cantidad: 1, costo_unitario: Number(c.costo), tipo_margen: tipo, valor_margen: valor, lleva_iva: c.aplica_iva, aplica_recargos: c.aplica_recargos }, recargos);
+    const antes = venta(c.tipo_margen, Number(c.valor_margen));
+    const { error } = await supabase.from("conceptos").update({ tipo_margen: "porcentaje", valor_margen: pct }).eq("id", c.id);
+    if (error) return { error: "No se pudo guardar el cambio." };
+    return { cambiado: true, cargo: c.nombre, margen_anterior: c.tipo_margen === "porcentaje" ? `${c.valor_margen}%` : `${c.tipo_margen} ${c.valor_margen}`, margen_nuevo: `${pct}%`, precio_venta_antes: antes, precio_venta_ahora: venta("porcentaje", pct) };
+  },
+};
+
 /** Herramientas disponibles según el rol: la de otros usuarios solo se le ofrece a un administrador. */
 export function herramientasDisponibles(esAdmin: boolean): HerramientaIA[] {
   const base = [buscarCotizaciones, obtenerUltimaCotizacion, resumenMetricas, buscarTarifas, buscarProveedor, buscarTarifarios, buscarClientes, buscarFletesHerramienta, crearCotizacion];
-  return esAdmin ? [...base, cotizacionesPorUsuario, actualizarTarifario] : base;
+  return esAdmin ? [...base, cotizacionesPorUsuario, actualizarTarifario, cambiarMargen] : base;
 }

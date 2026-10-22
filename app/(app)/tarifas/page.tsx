@@ -1,6 +1,7 @@
 import { adminRequerido } from "@/lib/sesion";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { listarTarifarios } from "@/lib/tarifas/consultas";
+import { leerConfig } from "@/lib/config";
 import { ListaTarifarios } from "@/components/tarifas/ListaTarifarios";
 
 // Leer un tarifario con IA puede tardar más que el límite por defecto del servidor.
@@ -9,9 +10,10 @@ export const maxDuration = 60;
 export default async function PaginaTarifas() {
   await adminRequerido();
   const supabase = await crearClienteServidor();
-  const [tarifarios, { data: proveedores }] = await Promise.all([
+  const [tarifarios, { data: proveedores }, { recargos }] = await Promise.all([
     listarTarifarios(true),
     supabase.from("proveedores").select("*").order("nombre"),
+    leerConfig(),
   ]);
 
   return (
@@ -22,7 +24,7 @@ export default async function PaginaTarifas() {
           Un tarifario por proveedor y servicio, con su vigencia y el documento original. Cuando llega su fecha de vencimiento se apaga solo y deja de aparecer al cotizar. Editar aquí no cambia cotizaciones ya guardadas.
         </p>
       </div>
-      <ListaTarifarios key={tarifarios.map((t) => `${t.id}${t.estado}${t.vigencia_hasta}`).join("|")} tarifarios={tarifarios} proveedores={proveedores ?? []} />
+      <ListaTarifarios key={tarifarios.map((t) => `${t.id}${t.estado}${t.vigencia_hasta}`).join("|")} tarifarios={tarifarios} proveedores={proveedores ?? []} recargos={recargos} />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { FilaExtraida } from "@/lib/ia/tarifarioIA";
+import type { Moneda, Recargos, TipoMargen } from "@/lib/calculo/tipos";
 
 export type EstadoCambio = "nuevo" | "cambia" | "igual";
 
@@ -10,7 +11,7 @@ export interface CambioFila {
   /** Fila existente que se actualiza; null si es nueva. */
   existenteId: string | null;
   fila: FilaExtraida;
-  anterior: { costo: number | null; minimo: number | null } | null;
+  anterior: { costo: number | null; minimo: number | null; tipo_margen?: TipoMargen; valor_margen?: number; aplica_recargos?: boolean } | null;
   /** Nombre con el que se guardaría (concepto con su variante) o el tramo, para mostrar. */
   etiqueta: string;
 }
@@ -21,12 +22,15 @@ export interface PropuestaActualizacion {
   vigencia_desde: string;
   vigencia_hasta: string;
   condiciones: string;
+  /** Para calcular en pantalla el precio de venta (compra con impuestos + margen). */
+  moneda: Moneda;
+  recargos: Recargos;
   cambios: CambioFila[];
 }
 
 export interface FilasExistentes {
-  rutas: { id: string; origen: string; via: string | null; variante: string | null; naviera?: string | null; costo: number | null; minimo: number | null }[];
-  conceptos: { id: string; nombre: string; costo: number | null; minimo: number | null }[];
+  rutas: { id: string; origen: string; via: string | null; variante: string | null; naviera?: string | null; costo: number | null; minimo: number | null; tipo_margen?: TipoMargen; valor_margen?: number; aplica_recargos?: boolean }[];
+  conceptos: { id: string; nombre: string; costo: number | null; minimo: number | null; tipo_margen?: TipoMargen; valor_margen?: number; aplica_recargos?: boolean }[];
 }
 
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -71,13 +75,13 @@ export function calcularCambios(existentes: FilasExistentes, filas: FilaExtraida
       const etiqueta = [fila.origen, fila.naviera || fila.via, fila.variante].filter(Boolean).join(" · ");
       if (!previa) return { clave, tipo: "ruta", estado: "nuevo", existenteId: null, fila, anterior: null, etiqueta };
       const mismo = igual(previa.costo, fila.costo) && (fila.minimo == null || igual(previa.minimo, fila.minimo));
-      return { clave, tipo: "ruta", estado: mismo ? "igual" : "cambia", existenteId: previa.id, fila, anterior: { costo: previa.costo, minimo: previa.minimo }, etiqueta };
+      return { clave, tipo: "ruta", estado: mismo ? "igual" : "cambia", existenteId: previa.id, fila, anterior: { costo: previa.costo, minimo: previa.minimo, tipo_margen: previa.tipo_margen, valor_margen: previa.valor_margen, aplica_recargos: previa.aplica_recargos }, etiqueta };
     }
     const nombre = nombreConcepto(fila);
     const previa = existentes.conceptos.find((c) => norm(c.nombre) === norm(nombre));
     if (!previa) return { clave, tipo: "concepto", estado: "nuevo", existenteId: null, fila, anterior: null, etiqueta: nombre };
     const mismo = igual(previa.costo, fila.costo) && (fila.minimo == null || igual(previa.minimo, fila.minimo));
-    return { clave, tipo: "concepto", estado: mismo ? "igual" : "cambia", existenteId: previa.id, fila, anterior: { costo: previa.costo, minimo: previa.minimo }, etiqueta: nombre };
+    return { clave, tipo: "concepto", estado: mismo ? "igual" : "cambia", existenteId: previa.id, fila, anterior: { costo: previa.costo, minimo: previa.minimo, tipo_margen: previa.tipo_margen, valor_margen: previa.valor_margen, aplica_recargos: previa.aplica_recargos }, etiqueta: nombre };
   });
 }
 

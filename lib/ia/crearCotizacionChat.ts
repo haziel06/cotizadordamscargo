@@ -40,6 +40,10 @@ export interface DatosCotizacionChat {
   /** Código corto (8 letras) del flete elegido, tal como lo dio buscarFletes. */
   ruta_ref?: string;
   conceptos_adicionales?: string[];
+  /** Solo administradores: margen % exacto para el flete de ESTA cotización (no cambia la tarifa). */
+  margen_flete_pct?: number;
+  /** Solo administradores: margen % exacto para cargos concretos de ESTA cotización. */
+  margenes_cargos?: { nombre: string; porcentaje: number }[];
 }
 
 const SERVICIOS: TipoServicio[] = ["courier", "aereo", "maritimo_lcl", "maritimo_fcl", "terrestre", "aduanas"];
@@ -80,6 +84,12 @@ export async function crearCotizacionDesdeChat(datos: DatosCotizacionChat, sesio
     faltan.push("qué cotizar: el flete elegido (busca con buscarFletes y pregunta cuál) o los cargos a incluir");
   }
   if (faltan.length || !cliente || !servicio) return { ok: false, faltan };
+  const pideMargen = datos.margen_flete_pct != null || (datos.margenes_cargos ?? []).length > 0;
+  if (pideMargen && !sesion.esAdmin) return { ok: false, error: "Solo un administrador puede fijar el margen de una cotización." };
+  const pctValido = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 300;
+  if ((datos.margen_flete_pct != null && !pctValido(datos.margen_flete_pct)) || (datos.margenes_cargos ?? []).some((m) => !pctValido(m.porcentaje))) {
+    return { ok: false, error: "Los márgenes deben ser porcentajes entre 0 y 300." };
+  }
 
   const supabase = await crearClienteServidor();
   const [{ recargos, defaults }, clienteRegistrado] = await Promise.all([leerConfig(), buscarClienteRegistrado(cliente)]);
@@ -145,6 +155,27 @@ export async function crearCotizacionDesdeChat(datos: DatosCotizacionChat, sesio
     });
   }
 
+  // Margen exacto pedido por el administrador para esta cotización: pisa también la tarifa especial del cliente.
+  const margenesAplicados: string[] = [];
+  if (pideMargen) {
+    const fijar = (l: Omit<LineaEditable, "_clave">, pct: number, etiqueta: string) => {
+      if (l.costo_unitario <= 0) { advertencias.push(`No se pudo fijar ${pct}% a «${l.nombre}»: no tiene costo de proveedor.`); return; }
+      l.tipo_margen = "porcentaje"; l.valor_margen = pct;
+      margenesAplicados.push(`${etiqueta}: ${pct}%`);
+    };
+    if (datos.margen_flete_pct != null) {
+      const flete = lineas.find((l) => l.ruta_id);
+      if (flete) fijar(flete, datos.margen_flete_pct, "Flete");
+      else advertencias.push("Pediste un margen para el flete pero esta cotización no tiene flete.");
+    }
+    for (const m of datos.margenes_cargos ?? []) {
+      const buscado = normalizar(m.nombre);
+      const l = lineas.find((x) => !x.ruta_id && normalizar(x.nombre).includes(buscado));
+      if (l) fijar(l, m.porcentaje, l.nombre);
+      else advertencias.push(`No encontré el cargo «${m.nombre}» en la cotización para fijarle margen.`);
+    }
+  }
+
   const guardado = await guardarCotizacion({
     id: null,
     cabecera: {
@@ -168,7 +199,7 @@ export async function crearCotizacionDesdeChat(datos: DatosCotizacionChat, sesio
   if (!guardado.ok) return { ok: false, error: guardado.error };
 
   const [{ data: cab }, { data: filas }] = await Promise.all([
-    supabase.from("cotizaciones").select("numero, cliente_nombre, total_gtq").eq("id", guardado.id).single(),
+    supabase.from("cotizaciones").select("numero, cliente_nombre, total_gtq, utilidad_gtq, margen_pct").eq("id", guardado.id).single(),
     supabase.from("cotizacion_lineas").select("nombre, cantidad, moneda, venta_total").eq("cotizacion_id", guardado.id).order("orden"),
   ]);
   if (!cab) return { ok: false, error: "Se guardó pero no pude leer el resultado." };
@@ -182,6 +213,7 @@ export async function crearCotizacionDesdeChat(datos: DatosCotizacionChat, sesio
       numero: cab.numero, cliente: cab.cliente_nombre, total_gtq: total, estado: "borrador",
       lineas: (filas ?? []).map((l) => ({ servicio: l.nombre, cantidad: l.cantidad, venta: formatoMoneda(Number(l.venta_total), l.moneda) })),
       tarifas_especiales_aplicadas: aplicadasEspeciales,
+      ...(sesion.esAdmin ? { margenes_aplicados: margenesAplicados, utilidad_gtq: formatoMoneda(Number(cab.utilidad_gtq), "GTQ"), margen_total_pct: cab.margen_pct } : {}),
       advertencias,
     },
   };

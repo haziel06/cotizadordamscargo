@@ -9,6 +9,7 @@ import { Entrada, Selector } from "@/components/Campos";
 import { SECCIONES, SERVICIOS, infoServicio } from "@/lib/etiquetas";
 import { formatoFecha } from "@/lib/calculo/formato";
 import type { Proveedor } from "@/lib/supabase/tipos";
+import type { Recargos } from "@/lib/calculo/tipos";
 import type { TarifarioResumen } from "@/lib/tarifas/consultas";
 import { ETIQUETA_ESTADO, textoVencimiento, type EstadoTarifario } from "@/lib/tarifas/estado";
 import { archivarTarifario, eliminarTarifario, establecerVigenciaTarifario } from "@/lib/tarifas/acciones";
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
 interface Props {
   tarifarios: TarifarioResumen[];
   proveedores: Proveedor[];
+  recargos: Recargos;
 }
 
 type Filtro = "todos" | "usables" | EstadoTarifario;
@@ -99,7 +101,7 @@ function Tarjeta({ t, pendiente, correr, eliminar }: { t: TarifarioResumen } & A
   );
 }
 
-export function ListaTarifarios({ tarifarios, proveedores }: Props) {
+export function ListaTarifarios({ tarifarios, proveedores, recargos }: Props) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [vista, setVista] = useState<"proveedor" | "servicio">("proveedor");
@@ -174,7 +176,7 @@ export function ListaTarifarios({ tarifarios, proveedores }: Props) {
         <div className="ml-auto flex gap-2">
           <Proveedores proveedores={proveedores} />
           <BotonActualizarTarifa tarifarios={tarifarios} />
-          <DialogoTarifarioIA proveedores={proveedores} />
+          <DialogoTarifarioIA proveedores={proveedores} recargos={recargos} />
           <DialogoTarifario proveedores={proveedores}>
             <Button><Plus /> Nuevo tarifario</Button>
           </DialogoTarifario>

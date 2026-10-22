@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Campo, Casilla, Entrada, Selector } from "@/components/Campos";
 import { ZonaArchivo } from "@/components/ZonaArchivo";
-import { formatoFecha, hoyIso } from "@/lib/calculo/formato";
+import { formatoFecha, formatoMoneda, hoyIso } from "@/lib/calculo/formato";
+import { ventaLinea } from "@/lib/calculo/linea";
 import { ACEPTA_DOCUMENTOS } from "@/lib/ia/documento-tipos";
 import type { TarifarioResumen } from "@/lib/tarifas/consultas";
 import { resumenCambios, type CambioFila, type PropuestaActualizacion } from "@/lib/tarifas/diferencias";
@@ -91,6 +92,12 @@ export function DialogoActualizarTarifa({ tarifarios = [], tarifarioInicial, pro
   };
 
   const resumen = propuesta ? resumenCambios(propuesta.cambios) : null;
+  // Precio de venta con la misma fórmula del resto del sistema: compra (+ impuestos si aplica) y margen encima.
+  const calcular = (costo: number, f: FilaUI, tipo: "porcentaje" | "monto_fijo" | "precio_fijo", valor: number) =>
+    propuesta ? ventaLinea({ nombre: "", categoria: "internacional", moneda: propuesta.moneda, cantidad: 1, costo_unitario: costo, tipo_margen: tipo, valor_margen: valor, lleva_iva: false, aplica_recargos: f.anterior?.aplica_recargos ?? true }, propuesta.recargos) : 0;
+  const ventaAntes = (f: FilaUI) => (f.anterior?.costo != null && f.anterior.tipo_margen ? calcular(f.anterior.costo, f, f.anterior.tipo_margen, f.anterior.valor_margen ?? 0) : null);
+  const ventaAhora = (f: FilaUI) => (f.estado === "nuevo" ? calcular(f.costoNuevo, f, "porcentaje", f.valor_margen) : calcular(f.costoNuevo, f, f.anterior?.tipo_margen ?? "porcentaje", f.anterior?.valor_margen ?? 0));
+  const margenTexto = (f: FilaUI) => (f.anterior?.tipo_margen === "monto_fijo" ? `+${f.anterior.valor_margen} fijo` : f.anterior?.tipo_margen === "precio_fijo" ? "precio fijo" : `${f.anterior?.valor_margen ?? "—"}%`);
   // Si las nuevas tarifas empiezan en el futuro, pisar el tarifario actual lo dejaría sin poder usarse hasta esa fecha.
   const empiezaDespues = Boolean(desde && desde > hoyIso());
   const elegibles = tarifarios.filter((t) => t.estado !== "desactivado");
@@ -160,7 +167,12 @@ export function DialogoActualizarTarifa({ tarifarios = [], tarifarioInicial, pro
               <div className="max-h-[42vh] overflow-auto rounded-lg border">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-muted/80 text-left">
-                    <tr><th className="p-1.5"></th><th className="p-1.5">Cambio</th><th className="p-1.5">Tarifa</th><th className="p-1.5 text-right">Antes</th><th className="p-1.5">Ahora</th><th className="p-1.5">Margen % (nuevas)</th></tr>
+                    <tr>
+                      <th className="p-1.5"></th><th className="p-1.5">Cambio</th><th className="p-1.5">Tarifa</th>
+                      <th className="bg-amber-50 p-1.5 text-right text-amber-950">Compra antes</th><th className="bg-amber-50 p-1.5 text-amber-950">Compra ahora</th>
+                      <th className="bg-green-50 p-1.5 text-green-950">Margen %</th>
+                      <th className="bg-green-50 p-1.5 text-right text-green-950">Venta antes</th><th className="bg-green-50 p-1.5 text-right text-green-950">Venta ahora</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y">
                     {filas.map((f, i) => (
@@ -168,9 +180,15 @@ export function DialogoActualizarTarifa({ tarifarios = [], tarifarioInicial, pro
                         <td className="p-1.5"><Casilla checked={f.incluir} onChange={(e) => setFila(i, "incluir", e.target.checked)} /></td>
                         <td className="p-1.5"><span className={cn("rounded px-1.5 py-0.5 font-medium", f.estado === "nuevo" ? "bg-green-100 text-green-900" : "bg-amber-100 text-amber-900")}>{f.estado === "nuevo" ? "Nuevo" : "Cambia"}</span></td>
                         <td className="p-1.5"><span className="font-medium">{f.etiqueta}</span> <span className="text-muted-foreground">{f.tipo === "ruta" ? "ruta" : "cargo"}</span></td>
-                        <td className="num p-1.5 text-right text-muted-foreground">{f.anterior?.costo ?? "—"}</td>
-                        <td className="p-1.5"><Entrada type="number" step="0.01" className="h-7 w-24" value={f.costoNuevo} onChange={(e) => setFila(i, "costoNuevo", Number(e.target.value))} /></td>
-                        <td className="p-1.5">{f.estado === "nuevo" ? <Entrada type="number" className="h-7 w-16" value={f.valor_margen} onChange={(e) => setFila(i, "valor_margen", Number(e.target.value))} /> : <span className="text-muted-foreground">se conserva</span>}</td>
+                        <td className="num bg-amber-50/50 p-1.5 text-right text-muted-foreground">{f.anterior?.costo != null ? formatoMoneda(f.anterior.costo, propuesta.moneda) : "—"}</td>
+                        <td className="bg-amber-50/50 p-1.5"><Entrada type="number" step="0.01" className="h-7 w-24 font-semibold" value={f.costoNuevo} onChange={(e) => setFila(i, "costoNuevo", Number(e.target.value))} /></td>
+                        <td className="bg-green-50/50 p-1.5">
+                          {f.estado === "nuevo"
+                            ? <Entrada type="number" className="h-7 w-16" value={f.valor_margen} onChange={(e) => setFila(i, "valor_margen", Number(e.target.value))} />
+                            : <span className="text-muted-foreground">{margenTexto(f)} · se conserva</span>}
+                        </td>
+                        <td className="num bg-green-50/50 p-1.5 text-right text-muted-foreground">{ventaAntes(f) != null ? formatoMoneda(ventaAntes(f)!, propuesta.moneda) : "—"}</td>
+                        <td className="num bg-green-50/50 p-1.5 text-right font-semibold text-green-900">{formatoMoneda(ventaAhora(f), propuesta.moneda)}</td>
                       </tr>
                     ))}
                   </tbody>

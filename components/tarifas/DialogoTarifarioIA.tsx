@@ -7,14 +7,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Campo, Casilla, Entrada, Selector } from "@/components/Campos";
 import { ZonaArchivo } from "@/components/ZonaArchivo";
 import { SECCIONES, SERVICIOS, infoSeccion } from "@/lib/etiquetas";
-import { formatoFecha, hoyIso } from "@/lib/calculo/formato";
+import { formatoFecha, formatoMoneda, hoyIso } from "@/lib/calculo/formato";
 import type { Proveedor } from "@/lib/supabase/tipos";
+import type { Recargos } from "@/lib/calculo/tipos";
+import { ventaLinea } from "@/lib/calculo/linea";
 import { guardarTarifario, guardarConcepto, guardarRuta, guardarProveedor, subirDocumentoTarifario, type DatosTarifario } from "@/lib/tarifas/acciones";
 import { extraerTarifarioIA } from "@/lib/ia/tarifarioAcciones";
 import { ACEPTA_DOCUMENTOS } from "@/lib/ia/documento-tipos";
 import { coincideAlgunProveedor, coincideProveedor, type FilaExtraida } from "@/lib/ia/tarifarioIA";
 
-interface Props { proveedores: Proveedor[] }
+interface Props { proveedores: Proveedor[]; recargos?: Recargos }
 
 type Fila = FilaExtraida & { incluir: boolean; tipo_margen: "porcentaje" | "monto_fijo" | "precio_fijo"; valor_margen: number; aplica_recargos: boolean };
 
@@ -25,7 +27,7 @@ const NUEVO = "__nuevo__";
 const CAB_VACIA: DatosTarifario = { nombre: "", proveedor_id: null, servicio: null, seccion: "flete_maritimo", origen: "", destino: "Guatemala", moneda: "USD", vigencia_desde: "", vigencia_hasta: "", notas: "" };
 
 /** Sube una foto/PDF de tarifario, la IA extrae las filas y las revisas/editas antes de guardar nada. */
-export function DialogoTarifarioIA({ proveedores }: Props) {
+export function DialogoTarifarioIA({ proveedores, recargos }: Props) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [paso, setPaso] = useState<"subir" | "revisar">("subir");
@@ -224,10 +226,11 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
                     <th className="p-1.5">Destino</th>
                     <th className="p-1.5">Naviera</th>
                     <th className="p-1.5">Variante</th>
-                    <th className="p-1.5">Costo</th>
+                    <th className="bg-amber-50 p-1.5 text-amber-950">Compra</th>
                     <th className="p-1.5">Unidad</th>
                     <th className="p-1.5">Mínimo</th>
-                    <th className="p-1.5">Margen %</th>
+                    <th className="bg-green-50 p-1.5 text-green-950">Margen %</th>
+                    {recargos && <th className="bg-green-50 p-1.5 text-right text-green-950">Venta</th>}
                     <th className="p-1.5"></th>
                   </tr>
                 </thead>
@@ -252,7 +255,8 @@ export function DialogoTarifarioIA({ proveedores }: Props) {
                         </Selector>
                       </td>
                       <td className="p-1.5"><Entrada type="number" className="h-7 w-20" value={f.minimo ?? ""} onChange={(e) => setFila(i, "minimo", e.target.value ? Number(e.target.value) : null)} /></td>
-                      <td className="p-1.5"><Entrada type="number" className="h-7 w-16" value={f.valor_margen} onChange={(e) => setFila(i, "valor_margen", Number(e.target.value))} /></td>
+                      <td className="bg-green-50/50 p-1.5"><Entrada type="number" className="h-7 w-16" value={f.valor_margen} onChange={(e) => setFila(i, "valor_margen", Number(e.target.value))} /></td>
+                      {recargos && <td className="num bg-green-50/50 p-1.5 text-right font-semibold text-green-900">{formatoMoneda(ventaLinea({ nombre: "", categoria: "internacional", moneda: cab.moneda, cantidad: 1, costo_unitario: f.costo, tipo_margen: f.tipo_margen, valor_margen: f.valor_margen, lleva_iva: false, aplica_recargos: f.aplica_recargos }, recargos), cab.moneda)}</td>}
                       <td className="p-1.5"><Button variant="ghost" size="icon-sm" onClick={() => setFilas((xs) => xs.filter((_, j) => j !== i))}><Trash2 className="size-3.5 text-destructive" /></Button></td>
                     </tr>
                   ))}
